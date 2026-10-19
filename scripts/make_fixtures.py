@@ -36,8 +36,8 @@ def make_epub(path: Path) -> None:
             '<?xml version="1.0" encoding="utf-8"?>'
             '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">'
             '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
-            '<dc:identifier id="id">urn:uuid:open-ebook-reader-sample</dc:identifier>'
-            "<dc:title>Libro de prueba EPUB</dc:title><dc:creator>Open Ebook Reader</dc:creator>"
+            '<dc:identifier id="id">urn:uuid:noctua-sample</dc:identifier>'
+            "<dc:title>Libro de prueba EPUB</dc:title><dc:creator>Noctua</dc:creator>"
             '<dc:language>es</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>'
             "</metadata><manifest>"
             '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'
@@ -81,7 +81,7 @@ def make_pdf(path: Path, pages: int = 3) -> None:
     objects[1] = (
         f"<< /Type /Pages /Count {pages} /Kids [{' '.join(f'{k} 0 R' for k in kids)}] >>"
     ).encode("latin-1")
-    info = add("<< /Title (Libro de prueba PDF) /Author (Open Ebook Reader) >>")
+    info = add("<< /Title (Libro de prueba PDF) /Author (Noctua) >>")
 
     out = bytearray(b"%PDF-1.4\n")
     offsets = []

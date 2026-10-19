@@ -1,4 +1,6 @@
-type Props = Record<string, string | number | boolean | EventListener | undefined>;
+// Handlers may declare a specific event type (MouseEvent, KeyboardEvent...).
+type Handler = (e: never) => unknown;
+type Props = Record<string, string | number | boolean | Handler | undefined>;
 type Child = Node | string | null | undefined | false;
 
 /** Tiny element factory: h("button", { class: "x", onclick: fn }, "Label"). */
@@ -11,7 +13,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   for (const [key, value] of Object.entries(props)) {
     if (value === undefined || value === false) continue;
     if (key.startsWith("on") && typeof value === "function") {
-      el.addEventListener(key.slice(2), value);
+      el.addEventListener(key.slice(2), value as EventListener);
     } else {
       el.setAttribute(key, value === true ? "" : String(value));
     }

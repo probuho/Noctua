@@ -8,6 +8,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("book {0} not found")]
     BookNotFound(i64),
+    #[error("{0}")]
+    Invalid(String),
 }
 
 // Commands return errors to the frontend as plain strings.

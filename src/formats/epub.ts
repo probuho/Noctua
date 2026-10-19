@@ -1,12 +1,14 @@
 import "foliate-js/view.js";
 import {
   makeBook,
+  type DrawAnnotationDetail,
   type FoliateTocItem,
   type FoliateView,
   type RelocateDetail,
 } from "foliate-js/view.js";
+import { Overlayer } from "foliate-js/overlayer.js";
 import { FONT_STACKS, THEME_COLORS } from "../ui/theme";
-import type { FormatPlugin, ReaderSettings, ReadingPosition, TocItem } from "./types";
+import type { FormatPlugin, ReaderSettings, ReadingPosition, TextSelection, TocItem } from "./types";
 
 type LangMap = string | Record<string, string> | undefined;
 
@@ -48,6 +50,12 @@ function bookCss({ theme, fontSize, fontFamily, lineHeight, textAlign }: ReaderS
   `;
 }
 
+/** Converts a rect inside a book iframe to app viewport coordinates. */
+function toViewport(rect: DOMRect, doc: Document): DOMRect {
+  const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+  return new DOMRect(rect.x + (frame?.x ?? 0), rect.y + (frame?.y ?? 0), rect.width, rect.height);
+}
+
 function applyLayout(view: FoliateView, settings: ReaderSettings): void {
   view.renderer.setAttribute("max-column-count", settings.layout === "double" ? "2" : "1");
   view.renderer.setStyles?.(bookCss(settings));
@@ -78,11 +86,55 @@ export const epubPlugin: FormatPlugin = {
     view.renderer.setAttribute("flow", "paginated");
     applyLayout(view, settings);
 
-    // Key presses inside the book's iframe never reach the app; forward them
-    // so reader shortcuts keep working while the text has focus.
+    const selectListeners: Array<(s: TextSelection | null) => void> = [];
+    const highlightListeners: Array<(location: string, rect: DOMRect) => void> = [];
+    const linkListeners: Array<(url: string) => void> = [];
+    /** location -> CSS color of every highlight the app asked to show. */
+    let highlights = new Map<string, string>();
+
+    const emitSelection = (doc: Document, index: number) => {
+      const selection = doc.getSelection();
+      const text = selection?.toString().trim() ?? "";
+      if (!selection || selection.isCollapsed || !text) {
+        selectListeners.forEach((l) => l(null));
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const result: TextSelection = {
+        location: view.getCFI(index, range),
+        text,
+        progress: view.lastLocation?.fraction ?? 0,
+        rect: toViewport(range.getBoundingClientRect(), doc),
+      };
+      selectListeners.forEach((l) => l(result));
+    };
+
     view.addEventListener("load", (e) => {
-      const { doc } = (e as CustomEvent<{ doc: Document }>).detail;
+      const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail;
+      // Key presses inside the book's iframe never reach the app; forward them
+      // so reader shortcuts keep working while the text has focus.
       doc.addEventListener("keydown", (ev) => document.dispatchEvent(new KeyboardEvent("keydown", ev)));
+      doc.addEventListener("pointerup", () => emitSelection(doc, index));
+      doc.addEventListener("keyup", (ev) => ev.shiftKey && emitSelection(doc, index));
+    });
+
+    // Highlights live in per-section overlays; repaint them whenever a section loads.
+    view.addEventListener("create-overlay", () => {
+      for (const [value, color] of highlights) void view.addAnnotation({ value, color });
+    });
+    view.addEventListener("draw-annotation", (e) => {
+      const { draw, annotation } = (e as CustomEvent<DrawAnnotationDetail>).detail;
+      draw(Overlayer.highlight, { color: highlights.get(annotation.value) ?? annotation.color });
+    });
+    view.addEventListener("show-annotation", (e) => {
+      const { value, range } = (e as CustomEvent<{ value: string; range: Range }>).detail;
+      const rect = toViewport(range.getBoundingClientRect(), range.startContainer.ownerDocument!);
+      highlightListeners.forEach((l) => l(value, rect));
+    });
+    view.addEventListener("external-link", (e) => {
+      e.preventDefault();
+      const { href_ } = (e as CustomEvent<{ href_: string }>).detail;
+      linkListeners.forEach((l) => l(href_));
     });
 
     const listeners: Array<(p: ReadingPosition) => void> = [];
@@ -96,7 +148,7 @@ export const epubPlugin: FormatPlugin = {
     await view.init({ lastLocation: location ?? null, showTextStart: true });
 
     return {
-      capabilities: { reflowable: true, pages: false, fit: false },
+      capabilities: { reflowable: true, pages: false, fit: false, annotations: true },
       next: () => view.next(),
       prev: () => view.prev(),
       goTo: async (target) => void (await view.goTo(target)),
@@ -116,6 +168,16 @@ export const epubPlugin: FormatPlugin = {
       },
       clearSearch: () => view.clearSearch(),
       applySettings: (s) => applyLayout(view, s),
+      onSelect: (l) => void selectListeners.push(l),
+      clearSelection: () => view.deselect(),
+      setHighlights(list) {
+        const next = new Map(list.map((h) => [h.location, h.color]));
+        for (const value of highlights.keys()) if (!next.has(value)) void view.deleteAnnotation({ value });
+        highlights = next;
+        for (const [value, color] of highlights) void view.addAnnotation({ value, color });
+      },
+      onHighlightClick: (l) => void highlightListeners.push(l),
+      onExternalLink: (l) => void linkListeners.push(l),
       onRelocate: (l) => void listeners.push(l),
       destroy: () => {
         view.close();

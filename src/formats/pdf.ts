@@ -187,7 +187,8 @@ export const pdfPlugin: FormatPlugin = {
     resize.observe(wrapper);
 
     return {
-      capabilities: { reflowable: false, pages: true, fit: true },
+      // Highlights need a PDF text layer, which is not implemented yet.
+      capabilities: { reflowable: false, pages: true, fit: true, annotations: false },
       next: () => show(current + pagesShown(), { jump: false }),
       prev: () => show(current - (opts.layout === "double" ? 2 : 1), { jump: false }),
       goTo: (target) => show(Number(target), { jump: true }),
@@ -226,6 +227,11 @@ export const pdfPlugin: FormatPlugin = {
         opts = { ...s };
         void render();
       },
+      onSelect: () => {},
+      clearSelection: () => {},
+      setHighlights: () => {},
+      onHighlightClick: () => {},
+      onExternalLink: () => {},
       onRelocate: (l) => void listeners.push(l),
       destroy: () => {
         resize.disconnect();

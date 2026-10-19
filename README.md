@@ -1,10 +1,23 @@
-# Open Ebook Reader
+# Noctua - Ebook Reader
+
+_Noctua_ es el nombre latino de la lechuza de Minerva, símbolo de la sabiduría.
 
 Lector de libros electrónicos open source y multiplataforma (Windows, Linux,
 macOS, iOS y Android) construido con [Tauri 2](https://tauri.app) (Rust +
 TypeScript).
 
-Estado: **en desarrollo**. Biblioteca local y lector de EPUB y PDF con:
+Estado: **en desarrollo**. Biblioteca local de EPUB y PDF con:
+
+- añadir archivos o carpetas completas (también arrastrando y soltando);
+- vistas Todos, Leídos recientemente, Favoritos, Leídos, Sin categoría, por formato,
+  categorías propias y Papelera (los archivos nunca se borran del disco);
+- búsqueda, orden (recientes, título, autor, progreso, fecha), selección múltiple
+  y menú contextual;
+- propiedades editables (título, autor, descripción, portada) y «Continuar leyendo»;
+- notas y resaltados en 5 colores (EPUB), con búsqueda en Google, Wikipedia o el
+  traductor y exportación a HTML o Markdown.
+
+Y un lector con:
 
 - índice, búsqueda (texto o número de página), marcadores y «volver» tras un salto;
 - barra de progreso, ir a página, una o dos páginas, ajustar a página/ancho y zoom (PDF);
@@ -70,6 +83,8 @@ foliate-js ya soporta MOBI, AZW3, FB2, FBZ y CBZ, así que esos formatos se
 pueden añadir reutilizando `epub.ts` con otras extensiones.
 
 ## Desarrollo
+
+El plan de pruebas manual está en [docs/PLAN-DE-PRUEBAS.md](docs/PLAN-DE-PRUEBAS.md).
 
 ```bash
 npm run build                      # tsc + vite build

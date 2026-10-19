@@ -28,6 +28,23 @@ export interface ReadingPosition {
   page?: { current: number; total: number };
 }
 
+/** Text the reader selected inside the book. */
+export interface TextSelection {
+  /** Plugin-specific range (EPUB CFI range). */
+  location: string;
+  text: string;
+  /** Approximate 0..1 position, used to keep notes in reading order. */
+  progress: number;
+  /** Where the selection is on screen (viewport coordinates). */
+  rect: DOMRect;
+}
+
+export interface Highlight {
+  location: string;
+  /** Any CSS color. */
+  color: string;
+}
+
 export interface SearchResult {
   target: string;
   /** Section or page the match is in. */
@@ -64,6 +81,8 @@ export interface Capabilities {
   pages: boolean;
   /** Fit-to-width / fit-to-page apply. */
   fit: boolean;
+  /** Text can be selected, highlighted and annotated. */
+  annotations: boolean;
 }
 
 export interface ReaderSession {
@@ -81,6 +100,15 @@ export interface ReaderSession {
   search(query: string, onResult: (result: SearchResult) => void, signal: AbortSignal): Promise<void>;
   clearSearch(): void;
   applySettings(settings: ReaderSettings): void;
+  /** Fires with the new selection, or null when it is cleared. */
+  onSelect(listener: (selection: TextSelection | null) => void): void;
+  clearSelection(): void;
+  /** Replaces every highlight shown in the book. */
+  setHighlights(highlights: Highlight[]): void;
+  /** Fires when the reader clicks an existing highlight. */
+  onHighlightClick(listener: (location: string, rect: DOMRect) => void): void;
+  /** Fires for links that leave the book; the plugin never opens them itself. */
+  onExternalLink(listener: (url: string) => void): void;
   onRelocate(listener: (position: ReadingPosition) => void): void;
   destroy(): void;
 }

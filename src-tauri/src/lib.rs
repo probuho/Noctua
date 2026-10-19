@@ -10,6 +10,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -21,10 +22,30 @@ pub fn run() {
             commands::supported_formats,
             commands::list_books,
             commands::add_books,
-            commands::remove_book,
             commands::open_book,
-            commands::update_book_metadata,
+            commands::set_extracted_metadata,
+            commands::update_book_properties,
+            commands::set_cover,
+            commands::reset_cover,
             commands::save_progress,
+            commands::set_favorite,
+            commands::set_read,
+            commands::trash_books,
+            commands::restore_books,
+            commands::delete_books,
+            commands::empty_trash,
+            commands::list_categories,
+            commands::create_category,
+            commands::rename_category,
+            commands::delete_category,
+            commands::add_to_category,
+            commands::remove_from_category,
+            commands::list_annotations,
+            commands::save_annotation,
+            commands::update_annotation,
+            commands::delete_annotation,
+            commands::clear_annotations,
+            commands::save_export,
             commands::list_bookmarks,
             commands::add_bookmark,
             commands::remove_bookmark,

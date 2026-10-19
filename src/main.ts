@@ -1,7 +1,7 @@
 import "./styles.css";
 import "./formats";
 import type { Book } from "./api";
-import { renderLibrary } from "./ui/library";
+import { renderLibrary } from "./ui/library/index";
 import { renderReader } from "./ui/reader";
 import { applyAppTheme, loadSettings } from "./ui/theme";
 

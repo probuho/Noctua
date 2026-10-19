@@ -9,6 +9,7 @@ export type Action =
   | "search"
   | "bookmark"
   | "contents"
+  | "notes"
   | "larger"
   | "smaller"
   | "resetSize"
@@ -34,6 +35,7 @@ const BINDINGS: Binding[] = [
   { keys: ["Ctrl+f"], action: "search", label: "keySearch" },
   { keys: ["Ctrl+b"], action: "bookmark", label: "keyBookmark" },
   { keys: ["Ctrl+t"], action: "contents", label: "keyContents" },
+  { keys: ["n"], action: "notes", label: "keyNotes" },
   { keys: ["Ctrl+=", "Ctrl++"], action: "larger", label: "keySize" },
   { keys: ["Ctrl+-"], action: "smaller", label: "keySize" },
   { keys: ["Ctrl+0"], action: "resetSize", label: "keySizeReset" },

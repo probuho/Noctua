@@ -1,15 +1,20 @@
-import { api, type Bookmark } from "../../api";
+import { api, type Annotation, type Book, type Bookmark } from "../../api";
 import type { ReaderSession, ReadingPosition, SearchResult, TocItem } from "../../formats";
 import { t } from "../../i18n";
+import { confirmDialog } from "../dialogs";
 import { h } from "../dom";
+import { openMenuAt } from "../menu";
+import { cssColor, type Annotator } from "./annotations";
+import { exportNotes, type ExportFormat } from "./export";
 
-export type PanelTab = "toc" | "bookmarks" | "search";
+export type PanelTab = "toc" | "bookmarks" | "notes" | "search";
 
 const MAX_RESULTS = 500;
 
 interface Deps {
-  bookId: number;
+  book: Book;
   session: ReaderSession;
+  annotator: Annotator | null;
   position: () => ReadingPosition | null;
 }
 
@@ -32,7 +37,8 @@ function percent(progress: number): string {
   return `${Math.round(progress * 100)}%`;
 }
 
-export function createSidePanel({ bookId, session, position }: Deps) {
+export function createSidePanel({ book, session, annotator, position }: Deps) {
+  const bookId = book.id;
   let tab: PanelTab = "toc";
   let searchAbort: AbortController | null = null;
 
@@ -65,8 +71,8 @@ export function createSidePanel({ bookId, session, position }: Deps) {
                 "button",
                 {
                   class: "icon",
-                  title: t("remove"),
-                  "aria-label": t("remove"),
+                  title: t("delete"),
+                  "aria-label": t("delete"),
                   onclick: async () => drawBookmarks(await api.removeBookmark(mark.id, bookId)),
                 },
                 "×",
@@ -93,7 +99,7 @@ export function createSidePanel({ bookId, session, position }: Deps) {
         "button",
         {
           onclick: async () => {
-            if (!confirm(t("confirmClearBookmarks"))) return;
+            if (!(await confirmDialog(t("confirmClearBookmarks")))) return;
             await api.clearBookmarks(bookId);
             drawBookmarks([]);
           },
@@ -166,9 +172,115 @@ export function createSidePanel({ bookId, session, position }: Deps) {
   );
   const searchView = h("div", {}, searchForm, searchStatus, results);
 
+  // --- Notes --------------------------------------------------------------
+  const notesStatus = h("p", { class: "muted", role: "status" });
+  const notesList = h("ul", { class: "notes-list" });
+  let notesFilter = "";
+
+  const drawNotes = (list: Annotation[]) => {
+    const q = notesFilter.trim().toLocaleLowerCase();
+    const shown = q ? list.filter((a) => `${a.text} ${a.note ?? ""}`.toLocaleLowerCase().includes(q)) : list;
+    notesList.replaceChildren(
+      ...(shown.length
+        ? shown.map((a) =>
+            h(
+              "li",
+              { class: "note-item", style: `--note-color:${cssColor(a.color)}` },
+              h(
+                "button",
+                { class: "list-item", onclick: () => void session.goTo(a.location) },
+                h("span", { class: "note-quote" }, a.text),
+                a.note ? h("span", { class: "note-text" }, a.note) : null,
+                h("span", { class: "muted" }, percent(a.progress)),
+              ),
+              h(
+                "div",
+                { class: "note-actions" },
+                h(
+                  "button",
+                  {
+                    class: "icon",
+                    title: a.note ? t("editNote") : t("addNote"),
+                    "aria-label": a.note ? t("editNote") : t("addNote"),
+                    onclick: (e: Event) => annotator?.editNote(a, e.currentTarget as HTMLElement),
+                  },
+                  "✎",
+                ),
+                h(
+                  "button",
+                  { class: "icon", title: t("deleteHighlight"), "aria-label": t("deleteHighlight"), onclick: () => void annotator?.remove(a) },
+                  "×",
+                ),
+              ),
+            ),
+          )
+        : [h("li", { class: "empty" }, list.length ? t("nothingFound") : t("noNotes"))]),
+    );
+  };
+
+  const runExport = async (format: ExportFormat) => {
+    if (!annotator?.list().length) return;
+    try {
+      const path = await exportNotes(book, annotator.list(), format);
+      if (path) notesStatus.textContent = t("exported", path);
+    } catch (err) {
+      notesStatus.textContent = String(err);
+    }
+  };
+
+  const notesView = h(
+    "div",
+    {},
+    h(
+      "div",
+      { class: "panel-actions" },
+      h("input", {
+        type: "search",
+        placeholder: t("filterNotes"),
+        "aria-label": t("filterNotes"),
+        oninput: (e: Event) => {
+          notesFilter = (e.target as HTMLInputElement).value;
+          drawNotes(annotator?.list() ?? []);
+        },
+      }),
+      h(
+        "button",
+        {
+          onclick: (e: Event) =>
+            openMenuAt(e.currentTarget as HTMLElement, [
+              { label: t("exportHtml"), action: () => runExport("html") },
+              { label: t("exportMarkdown"), action: () => runExport("md") },
+            ]),
+        },
+        `${t("exportNotes")} ▾`,
+      ),
+      h(
+        "button",
+        {
+          class: "icon danger",
+          title: t("clearNotes"),
+          "aria-label": t("clearNotes"),
+          onclick: async () => {
+            if (annotator?.list().length && (await confirmDialog(t("confirmClearNotes")))) await annotator.clear();
+          },
+        },
+        "🗑",
+      ),
+    ),
+    notesStatus,
+    notesList,
+  );
+  annotator?.onChange(drawNotes);
+  drawNotes([]);
+
   // --- Tabs ---------------------------------------------------------------
-  const views: Record<PanelTab, HTMLElement> = { toc: tocView, bookmarks: bookmarksView, search: searchView };
-  const labels: Record<PanelTab, string> = { toc: t("contents"), bookmarks: t("bookmarks"), search: t("search") };
+  const views: Partial<Record<PanelTab, HTMLElement>> = {
+    toc: tocView,
+    bookmarks: bookmarksView,
+    ...(annotator ? { notes: notesView } : {}),
+    search: searchView,
+  };
+  const labels: Record<PanelTab, string> = { toc: t("contents"), bookmarks: t("bookmarks"), notes: t("notes"), search: t("search") };
 
   // Search highlights only make sense while the results are visible.
   const leaveSearch = () => {
@@ -184,7 +296,7 @@ export function createSidePanel({ bookId, session, position }: Deps) {
         h("button", { role: "tab", "aria-selected": String(key === tab), onclick: () => select(key) }, labels[key]),
       ),
     );
-    body.replaceChildren(views[tab]);
+    body.replaceChildren(views[tab] ?? tocView);
     if (tab === "search") searchInput.focus();
   };
 
@@ -195,8 +307,15 @@ export function createSidePanel({ bookId, session, position }: Deps) {
     el,
     isOpen: () => !el.hidden,
     open(next: PanelTab) {
+      if (!views[next]) return;
       el.hidden = false;
       select(next);
+    },
+    /** Opens the search tab and runs a query (used from the selection popup). */
+    search(query: string) {
+      this.open("search");
+      searchInput.value = query;
+      void runSearch(query);
     },
     toggle(next: PanelTab) {
       if (!el.hidden && tab === next) this.close();

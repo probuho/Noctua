@@ -1,12 +1,15 @@
 import { api, loadBookFile, type Book } from "../../api";
 import { getFormat, type ReaderSession, type ReadingPosition } from "../../formats";
 import { t } from "../../i18n";
+import { confirmDialog } from "../dialogs";
 import { h } from "../dom";
 import { isFullscreen, setFullscreen, toggleFullscreen } from "../fullscreen";
 import { applyAppTheme, DEFAULT_SETTINGS, loadSettings, saveSettings, THEMES } from "../theme";
 import { actionFor, hotkeySheet, type Action } from "./hotkeys";
 import { createSettingsPanel } from "./settings-panel";
+import { createAnnotator } from "./annotations";
 import { createSidePanel } from "./side-panel";
+import { openExternal } from "../external";
 
 const SAVE_DELAY_MS = 800;
 const SLIDER_STEPS = 1000;
@@ -57,7 +60,14 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   };
 
   // --- Panels ---------------------------------------------------------------
-  const side = createSidePanel({ bookId: book.id, session, position: () => position });
+  const annotator = session.capabilities.annotations
+    ? createAnnotator({ bookId: book.id, session, searchInBook: (query) => side.search(query) })
+    : null;
+  const side = createSidePanel({ book, session, annotator, position: () => position });
+
+  session.onExternalLink(async (url) => {
+    if (await confirmDialog(t("openExternalLink", url), t("open"))) await openExternal(url);
+  });
   let settingsPanel = createSettingsPanel(settings, session.capabilities, () => updateSettings());
   // Rebuilt on every open so values changed by hotkeys (theme, layout) show correctly.
   const toggleSettings = () => {
@@ -103,6 +113,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     positionLabel,
     iconButton(t("search"), "⌕", () => side.toggle("search")),
     iconButton(t("bookmarks"), "⚑", () => side.toggle("bookmarks")),
+    annotator ? iconButton(t("notes"), "✎", () => side.toggle("notes")) : null,
     flipButton,
     iconButton(t("settings"), "Aa", toggleSettings),
     iconButton(t("fullscreen"), "⛶", () => void toggleFullscreen()),
@@ -161,6 +172,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
 
   body.prepend(side.el);
   body.append(settingsPanel.el, help);
+  if (annotator) body.append(annotator.popup);
   placeholderBar.replaceWith(toolbar);
   placeholderNav.replaceWith(nav);
 
@@ -175,6 +187,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
       pageTotal.textContent = `/ ${pos.page.total}`;
     }
     backButton.disabled = !session.canGoBack();
+    annotator?.hide();
 
     pending = pos;
     window.clearTimeout(saveTimer);
@@ -202,6 +215,11 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
 
   // --- Hotkeys ----------------------------------------------------------------
   const closeOverlays = (): boolean => {
+    if (annotator?.isOpen()) {
+      annotator.hide();
+      session.clearSelection();
+      return true;
+    }
     const open = side.isOpen() || settingsPanel.isOpen() || !help.hidden;
     side.close();
     settingsPanel.close();
@@ -217,6 +235,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     search: () => side.open("search"),
     bookmark: () => side.addBookmark(),
     contents: () => side.toggle("toc"),
+    notes: () => side.toggle("notes"),
     larger: () => settingsPanel.stepSize(10),
     smaller: () => settingsPanel.stepSize(-10),
     resetSize: () => settingsPanel.stepSize(DEFAULT_SETTINGS.fontSize - settings.fontSize),
@@ -259,6 +278,9 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     await flush();
     if (await isFullscreen()) await setFullscreen(false);
     session.destroy();
+    if (position && position.progress >= 0.99 && book.readAt === null) {
+      if (await confirmDialog(t("markAsReadQuestion", book.title), t("markRead"))) await api.setRead([book.id], true);
+    }
     onClose();
   }
 

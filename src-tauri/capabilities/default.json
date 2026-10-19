@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     "dialog:allow-open",
+    "dialog:allow-ask",
+    "dialog:allow-message",
+    "dialog:allow-save",
+    "opener:allow-open-url",
     "core:window:allow-set-fullscreen"
   ]
 }

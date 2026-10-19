@@ -46,8 +46,20 @@ declare module "foliate-js/view.js" {
     setStyles?(css: string): void;
   }
 
+  export interface FoliateAnnotation {
+    value: string;
+    color?: string;
+  }
+
+  /** Detail of "draw-annotation": call draw(Overlayer.highlight, { color }). */
+  export interface DrawAnnotationDetail {
+    draw(fn: unknown, options?: Record<string, unknown>): void;
+    annotation: FoliateAnnotation;
+  }
+
   export interface FoliateView extends HTMLElement {
     book: FoliateBook;
+    lastLocation?: RelocateDetail | null;
     renderer: FoliateRenderer;
     open(file: File | Blob | string): Promise<void>;
     init(opts: { lastLocation?: string | null; showTextStart?: boolean }): Promise<void>;
@@ -56,10 +68,22 @@ declare module "foliate-js/view.js" {
     goToFraction(fraction: number): Promise<void>;
     search(opts: { query: string; matchCase?: boolean; matchDiacritics?: boolean; matchWholeWords?: boolean }): AsyncGenerator<SearchEvent>;
     clearSearch(): void;
+    getCFI(index: number, range: Range): string;
+    addAnnotation(annotation: FoliateAnnotation): Promise<unknown>;
+    deleteAnnotation(annotation: FoliateAnnotation): Promise<unknown>;
+    deselect(): void;
     prev(): Promise<void>;
     next(): Promise<void>;
     close(): void;
   }
 
   export function makeBook(file: File | Blob | string): Promise<FoliateBook>;
+}
+
+declare module "foliate-js/overlayer.js" {
+  export class Overlayer {
+    static highlight: unknown;
+    static underline: unknown;
+    static outline: unknown;
+  }
 }
