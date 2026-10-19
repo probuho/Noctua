@@ -1,0 +1,3 @@
+# Book files are binary even when they look like text (offsets matter in PDFs).
+*.pdf binary
+*.epub binary

@@ -1,0 +1,98 @@
+/**
+ * Contract every format plugin implements. The backend only detects the
+ * format (see `src-tauri/src/formats.rs`); parsing and rendering happen here.
+ * A plugin's `id` must match the backend format id.
+ */
+
+export interface BookMetadata {
+  title?: string;
+  author?: string;
+  cover?: Blob | null;
+}
+
+export interface TocItem {
+  label: string;
+  /** Opaque target understood by the plugin's `goTo`. */
+  target: string;
+  children?: TocItem[];
+}
+
+export interface ReadingPosition {
+  /** Opaque, plugin-specific location (EPUB CFI, PDF page number, ...). */
+  location: string;
+  /** 0..1 */
+  progress: number;
+  /** Human-readable hint, e.g. the current chapter or "12 / 300". */
+  label?: string;
+  /** Current page and total, when the format has real pages. */
+  page?: { current: number; total: number };
+}
+
+export interface SearchResult {
+  target: string;
+  /** Section or page the match is in. */
+  section: string;
+  excerpt: { pre: string; match: string; post: string };
+}
+
+export type Theme = "light" | "sepia" | "dark" | "night-sepia";
+export type FontFamily = "original" | "serif" | "sans" | "mono";
+export type TextAlign = "original" | "left" | "justify";
+export type PageLayout = "single" | "double";
+export type PdfFit = "page" | "width";
+
+export interface ReaderSettings {
+  theme: Theme;
+  /** Text size for reflowable books / zoom for fixed pages. 100 = original. */
+  fontSize: number;
+  fontFamily: FontFamily;
+  lineHeight: number;
+  textAlign: TextAlign;
+  layout: PageLayout;
+  pdfFit: PdfFit;
+  /** 0 (off) .. 0.7: darkens the page without changing the theme. */
+  dimming: number;
+  /** Seconds between automatic page turns. */
+  autoFlipSeconds: number;
+}
+
+/** What a format supports, so the UI only shows meaningful controls. */
+export interface Capabilities {
+  /** Fonts, spacing and alignment apply (false for fixed-page formats). */
+  reflowable: boolean;
+  /** Has real page numbers that "go to page" can target. */
+  pages: boolean;
+  /** Fit-to-width / fit-to-page apply. */
+  fit: boolean;
+}
+
+export interface ReaderSession {
+  readonly capabilities: Capabilities;
+  next(): Promise<void>;
+  prev(): Promise<void>;
+  goTo(target: string): Promise<void>;
+  /** 0..1 across the whole book. */
+  goToFraction(fraction: number): Promise<void>;
+  /** Returns to the position before the last jump (TOC, search, bookmark...). */
+  back(): Promise<void>;
+  canGoBack(): boolean;
+  toc(): TocItem[];
+  /** Streams matches; aborting the signal stops the search. */
+  search(query: string, onResult: (result: SearchResult) => void, signal: AbortSignal): Promise<void>;
+  clearSearch(): void;
+  applySettings(settings: ReaderSettings): void;
+  onRelocate(listener: (position: ReadingPosition) => void): void;
+  destroy(): void;
+}
+
+export interface OpenOptions {
+  location?: string | null;
+  settings: ReaderSettings;
+}
+
+export interface FormatPlugin {
+  id: string;
+  name: string;
+  extractMetadata(file: File): Promise<BookMetadata>;
+  open(container: HTMLElement, file: File, options: OpenOptions): Promise<ReaderSession>;
+}
