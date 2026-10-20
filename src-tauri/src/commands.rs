@@ -1,5 +1,6 @@
 use crate::error::Result;
 use crate::formats::{FormatInfo, FORMATS};
+use crate::journal_files;
 use crate::library::{AddResult, Annotation, Book, Bookmark, Category, JournalEntry, Library};
 use std::sync::Mutex;
 use tauri::ipc::Response;
@@ -255,6 +256,112 @@ pub fn list_all_annotations(state: State<LibraryState>) -> Result<Vec<Annotation
 #[tauri::command]
 pub fn list_all_journal(state: State<LibraryState>) -> Result<Vec<JournalEntry>> {
     lock(&state).all_journal()
+}
+
+// --- Journal files (Markdown, Obsidian-compatible) -----------------------------------
+
+fn journal_dir(lib: &Library) -> Result<Option<std::path::PathBuf>> {
+    Ok(lib
+        .setting(journal_files::FOLDER_KEY)?
+        .and_then(|raw| serde_json::from_str::<String>(&raw).ok())
+        .map(std::path::PathBuf::from))
+}
+
+fn require_journal_dir(lib: &Library) -> Result<std::path::PathBuf> {
+    journal_dir(lib)?.ok_or_else(|| crate::error::Error::Invalid("journal folder not set".into()))
+}
+
+/// The book's journal file name and title/author for its header.
+fn journal_target(lib: &Library, book_id: i64) -> Result<(String, Book)> {
+    let book = lib.get(book_id)?;
+    Ok((journal_files::file_name_for(&book.title, book.id), book))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalFile {
+    pub folder: Option<String>,
+    pub file: String,
+    pub contents: String,
+}
+
+#[tauri::command]
+pub fn journal_folder(state: State<LibraryState>) -> Result<Option<String>> {
+    Ok(journal_dir(&lock(&state))?.map(|p| p.to_string_lossy().into_owned()))
+}
+
+/// Sets the folder (chosen by the user in a native picker) and copies any
+/// journal entries written before into one Markdown file per book.
+#[tauri::command]
+pub fn set_journal_folder(path: String, state: State<LibraryState>) -> Result<()> {
+    let dir = std::path::PathBuf::from(&path);
+    std::fs::create_dir_all(&dir)?;
+    let lib = lock(&state);
+    lib.set_setting(journal_files::FOLDER_KEY, &serde_json::to_string(&path).unwrap_or_default())?;
+    if lib.setting("journal-migrated")?.is_none() {
+        for book in lib.list()? {
+            let mut entries = lib.journal(book.id)?;
+            entries.reverse(); // oldest first, like a diary file
+            if entries.is_empty() {
+                continue;
+            }
+            let file = journal_files::file_name_for(&book.title, book.id);
+            for e in entries {
+                let pos = e.progress.map(|p| format!(" · {}%", (p * 100.0).round())).unwrap_or_default();
+                let section = format!("## Entrada importada{pos}
+
+{}", e.body);
+                journal_files::append(&dir, &file, &book.title, book.author.as_deref(), &section)?;
+            }
+        }
+        lib.set_setting("journal-migrated", "true")?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn journal_read(book_id: i64, state: State<LibraryState>) -> Result<JournalFile> {
+    let lib = lock(&state);
+    let (file, _) = journal_target(&lib, book_id)?;
+    let folder = journal_dir(&lib)?;
+    let contents = match &folder {
+        Some(dir) => journal_files::read(dir, &file)?,
+        None => String::new(),
+    };
+    Ok(JournalFile { folder: folder.map(|p| p.to_string_lossy().into_owned()), file, contents })
+}
+
+#[tauri::command]
+pub fn journal_append(book_id: i64, section: String, state: State<LibraryState>) -> Result<String> {
+    let lib = lock(&state);
+    let dir = require_journal_dir(&lib)?;
+    let (file, book) = journal_target(&lib, book_id)?;
+    journal_files::append(&dir, &file, &book.title, book.author.as_deref(), &section)
+}
+
+#[tauri::command]
+pub fn journal_write(book_id: i64, contents: String, state: State<LibraryState>) -> Result<()> {
+    let lib = lock(&state);
+    let dir = require_journal_dir(&lib)?;
+    let (file, _) = journal_target(&lib, book_id)?;
+    journal_files::write(&dir, &file, &contents)
+}
+
+/// `data` is base64; returns the image path relative to the journal folder.
+#[tauri::command]
+pub fn journal_save_image(data: String, extension: String, state: State<LibraryState>) -> Result<String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .map_err(|_| crate::error::Error::Invalid("invalid image data".into()))?;
+    let dir = require_journal_dir(&lock(&state))?;
+    journal_files::save_image(&dir, &bytes, &extension)
+}
+
+#[tauri::command]
+pub fn journal_image(path: String, state: State<LibraryState>) -> Result<Response> {
+    let dir = require_journal_dir(&lock(&state))?;
+    Ok(Response::new(std::fs::read(journal_files::image_path(&dir, &path)?)?))
 }
 
 // --- Settings ----------------------------------------------------------------------

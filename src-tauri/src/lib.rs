@@ -1,6 +1,7 @@
 mod commands;
 mod error;
 mod formats;
+mod journal_files;
 mod library;
 
 use std::sync::Mutex;
@@ -52,6 +53,13 @@ pub fn run() {
             commands::delete_journal_entry,
             commands::list_all_annotations,
             commands::list_all_journal,
+            commands::journal_folder,
+            commands::set_journal_folder,
+            commands::journal_read,
+            commands::journal_append,
+            commands::journal_write,
+            commands::journal_save_image,
+            commands::journal_image,
             commands::get_setting,
             commands::set_setting,
             commands::list_bookmarks,
