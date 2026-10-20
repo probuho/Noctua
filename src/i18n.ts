@@ -242,6 +242,17 @@ const es = {
   openInBrowser: "Abrir en el navegador",
   goToPageLink: "Ir a la página %1",
   webLink: "Enlace a %1",
+  support: "Apoyar",
+  supportTitle: "Apoyar Noctua",
+  supportIntro: "Noctua es gratis y libre. Si te resulta útil y quieres invitarme a un café, tu aporte me ayuda a seguir dedicándole tiempo.",
+  supportCardTitle: "Con tarjeta de crédito o débito",
+  supportCardHint: "A través de Zinli, en dólares. No necesitas crear una cuenta.",
+  supportCardButton: "Donar con tarjeta",
+  supportBinanceTitle: "Con Binance Pay (USDT u otras)",
+  supportBinanceHint: "En la app de Binance: Pagar → Enviar → Binance ID, y pega este número.",
+  supportBinanceLabel: "Binance ID",
+  supportFree: "Donar es totalmente voluntario: ninguna función de Noctua depende de ello.",
+  copyFailed: "No se pudo copiar; selecciónalo y cópialo a mano.",
 };
 
 type Strings = typeof es;
@@ -490,6 +501,17 @@ const en: Strings = {
   openInBrowser: "Open in browser",
   goToPageLink: "Go to page %1",
   webLink: "Link to %1",
+  support: "Support",
+  supportTitle: "Support Noctua",
+  supportIntro: "Noctua is free and open source. If you find it useful and want to buy me a coffee, your support helps me keep working on it.",
+  supportCardTitle: "With a credit or debit card",
+  supportCardHint: "Through Zinli, in US dollars. No account needed.",
+  supportCardButton: "Donate with card",
+  supportBinanceTitle: "With Binance Pay (USDT or others)",
+  supportBinanceHint: "In the Binance app: Pay → Send → Binance ID, and paste this number.",
+  supportBinanceLabel: "Binance ID",
+  supportFree: "Donating is completely voluntary: no Noctua feature depends on it.",
+  copyFailed: "Could not copy; select it and copy it manually.",
 };
 
 const strings: Strings = navigator.language.toLowerCase().startsWith("es") ? es : en;

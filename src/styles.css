@@ -232,6 +232,20 @@ button.icon { padding: 6px 10px; }
 .locked { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; margin-top: 15vh; }
 .locked .icon-svg { width: 40px; height: 40px; }
 
+/* Support / donations */
+.support-button { display: inline-flex; align-items: center; gap: 6px; }
+.support-button .icon-svg { color: #c2185b; }
+:root[data-theme="dark"] .support-button .icon-svg, :root[data-theme="night-sepia"] .support-button .icon-svg { color: #f48fb1; }
+.help-panel .support-button { margin-top: 14px; }
+.support-body { display: flex; flex-direction: column; gap: 12px; }
+.support-body p { margin: 0; }
+.support-option { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.support-option h3 { margin: 0; font-size: 1rem; }
+.support-option .primary { display: inline-flex; align-items: center; gap: 8px; }
+.support-id { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.support-id code { font: 1.05rem ui-monospace, "Cascadia Mono", Consolas, monospace; padding: 4px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); user-select: all; }
+.support-id button { display: inline-flex; align-items: center; gap: 6px; }
+
 /* Library-wide notes and journal */
 .sidebar .sidebar-notebook { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 .book-grid[hidden], .notebook[hidden], .grid-only[hidden] { display: none; }

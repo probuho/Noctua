@@ -7,6 +7,7 @@ import { openExternal } from "../external";
 import { isFullscreen, setFullscreen, toggleFullscreen } from "../fullscreen";
 import { icon, setIcon, type IconName } from "../icons";
 import { externalLinkDialog, passwordDialog } from "../secure-dialogs";
+import { openSupportDialog } from "../support-dialog";
 import { applyAppTheme, DEFAULT_SETTINGS, loadSettings, saveSettings, THEMES } from "../theme";
 import { createAnnotator, loadLabels, saveLabels } from "./annotations";
 import { actionFor, hotkeySheet, type Action } from "./hotkeys";
@@ -142,6 +143,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
       h("button", { class: "icon-action", "aria-label": t("close"), title: t("close"), onclick: () => closeHelp() }, icon("close")),
     ),
     hotkeySheet(),
+    h("button", { class: "support-button", onclick: () => openSupportDialog() }, icon("heart"), h("span", {}, t("supportTitle"))),
   );
 
   // The settings panel is rebuilt on every open so it always shows current values.

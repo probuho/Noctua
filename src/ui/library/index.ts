@@ -7,6 +7,8 @@ import { blobToThumbnail, h } from "../dom";
 import { openMenu, openMenuAt, type MenuItem } from "../menu";
 import { createNotebook, notebookCount } from "./notebook";
 import { openProperties } from "./properties";
+import { icon } from "../icons";
+import { openSupportDialog } from "../support-dialog";
 import {
   booksInView,
   continueCandidate,
@@ -544,6 +546,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
       },
       t("select"),
     ),
+    h("button", { class: "support-button", onclick: () => openSupportDialog() }, icon("heart"), h("span", {}, t("support"))),
     h("button", { onclick: () => void pickFolder() }, t("addFolder")),
     h("button", { class: "primary", onclick: () => void pickFiles() }, t("addBooks")),
   );

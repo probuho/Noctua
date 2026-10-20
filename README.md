@@ -115,6 +115,13 @@ otra medida que la sustituya.
 - Reutilizar código, recursos o textos de lectores propietarios. Este proyecto
   se diseña en sala limpia a partir de especificaciones públicas.
 
+## Apoyar el proyecto
+
+Noctua es gratis. Si quieres invitarme a un café, puedes donar con tarjeta
+(Zinli) o con Binance Pay: los detalles están en [docs/APOYAR.md](docs/APOYAR.md)
+y en la app, en el botón **Apoyar** de la biblioteca o en **Ayuda** del lector.
+Es totalmente voluntario.
+
 ## Licencia
 
 Noctua es software libre bajo la **GNU Affero General Public License v3.0 o
