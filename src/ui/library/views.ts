@@ -8,6 +8,8 @@ export type View =
   | { kind: "read" }
   | { kind: "uncategorized" }
   | { kind: "trash" }
+  /** Notes and journal of every book, instead of a grid of books. */
+  | { kind: "notebook" }
   | { kind: "category"; id: number }
   | { kind: "format"; id: string };
 
@@ -28,13 +30,14 @@ export function parseViewKey(key: string | null): View {
   const [kind, id] = (key ?? "all").split(":");
   if (kind === "category" && Number(id)) return { kind, id: Number(id) };
   if (kind === "format" && id) return { kind, id };
-  if (["all", "recent", "favorites", "read", "uncategorized", "trash"].includes(kind)) {
+  if (["all", "recent", "favorites", "read", "uncategorized", "trash", "notebook"].includes(kind)) {
     return { kind } as View;
   }
   return { kind: "all" };
 }
 
 export function booksInView(books: Book[], view: View): Book[] {
+  if (view.kind === "notebook") return [];
   if (view.kind === "trash") return books.filter((b) => b.deletedAt !== null);
   const live = books.filter((b) => b.deletedAt === null);
   switch (view.kind) {

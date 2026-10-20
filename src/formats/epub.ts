@@ -8,7 +8,7 @@ import {
 } from "foliate-js/view.js";
 import { Overlayer } from "foliate-js/overlayer.js";
 import { FONT_STACKS, THEME_COLORS } from "../ui/theme";
-import type { FormatPlugin, ReaderSettings, ReadingPosition, TextSelection, TocItem } from "./types";
+import type { FormatPlugin, Highlight, ReaderSettings, ReadingPosition, TextSelection, TocItem } from "./types";
 
 type LangMap = string | Record<string, string> | undefined;
 
@@ -50,6 +50,33 @@ function bookCss({ theme, fontSize, fontFamily, lineHeight, textAlign }: ReaderS
   `;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * Draws a highlight and, when it has a note, a small speech-bubble marker at
+ * its end so notes are visible in the text (not only in the notes panel).
+ */
+function drawHighlight(rects: DOMRect[], options: { color?: string; note?: boolean }) {
+  const highlight = (Overlayer.highlight as (r: DOMRect[], o: object) => SVGGElement)(rects, options);
+  const last = rects[rects.length - 1];
+  if (!options.note || !last) return highlight;
+  const group = document.createElementNS(SVG_NS, "g");
+  const size = Math.max(10, Math.min(16, last.height * 0.8));
+  const marker = document.createElementNS(SVG_NS, "path");
+  const x = last.left + last.width + 1;
+  const y = last.top - size * 0.35;
+  // Rounded square with a tail: a speech bubble.
+  marker.setAttribute(
+    "d",
+    `M${x + 2} ${y}h${size - 4}a2 2 0 0 1 2 2v${size * 0.55}a2 2 0 0 1-2 2h-${size * 0.45}l-${size * 0.25} ${size * 0.25}v-${size * 0.25}h-${size * 0.3 - 4}a2 2 0 0 1-2-2v-${size * 0.55}a2 2 0 0 1 2-2z`,
+  );
+  marker.setAttribute("fill", options.color ?? "#f5c518");
+  marker.setAttribute("stroke", "rgba(0,0,0,.55)");
+  marker.setAttribute("stroke-width", "1");
+  group.append(highlight, marker);
+  return group;
+}
+
 /** Converts a rect inside a book iframe to app viewport coordinates. */
 function toViewport(rect: DOMRect, doc: Document): DOMRect {
   const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
@@ -57,6 +84,8 @@ function toViewport(rect: DOMRect, doc: Document): DOMRect {
 }
 
 function applyLayout(view: FoliateView, settings: ReaderSettings): void {
+  const flow = settings.layout === "scroll" ? "scrolled" : "paginated";
+  if (view.renderer.getAttribute("flow") !== flow) view.renderer.setAttribute("flow", flow);
   view.renderer.setAttribute("max-column-count", settings.layout === "double" ? "2" : "1");
   view.renderer.setStyles?.(bookCss(settings));
 }
@@ -83,14 +112,13 @@ export const epubPlugin: FormatPlugin = {
     view.classList.add("epub-view");
     container.append(view);
     await view.open(file);
-    view.renderer.setAttribute("flow", "paginated");
     applyLayout(view, settings);
 
     const selectListeners: Array<(s: TextSelection | null) => void> = [];
     const highlightListeners: Array<(location: string, rect: DOMRect) => void> = [];
     const linkListeners: Array<(url: string) => void> = [];
-    /** location -> CSS color of every highlight the app asked to show. */
-    let highlights = new Map<string, string>();
+    /** location -> every highlight the app asked to show. */
+    let highlights = new Map<string, Highlight>();
 
     const emitSelection = (doc: Document, index: number) => {
       const selection = doc.getSelection();
@@ -120,11 +148,12 @@ export const epubPlugin: FormatPlugin = {
 
     // Highlights live in per-section overlays; repaint them whenever a section loads.
     view.addEventListener("create-overlay", () => {
-      for (const [value, color] of highlights) void view.addAnnotation({ value, color });
+      for (const value of highlights.keys()) void view.addAnnotation({ value });
     });
     view.addEventListener("draw-annotation", (e) => {
       const { draw, annotation } = (e as CustomEvent<DrawAnnotationDetail>).detail;
-      draw(Overlayer.highlight, { color: highlights.get(annotation.value) ?? annotation.color });
+      const h = highlights.get(annotation.value);
+      draw(drawHighlight, { color: h?.color ?? annotation.color, note: h?.note });
     });
     view.addEventListener("show-annotation", (e) => {
       const { value, range } = (e as CustomEvent<{ value: string; range: Range }>).detail;
@@ -171,10 +200,10 @@ export const epubPlugin: FormatPlugin = {
       onSelect: (l) => void selectListeners.push(l),
       clearSelection: () => view.deselect(),
       setHighlights(list) {
-        const next = new Map(list.map((h) => [h.location, h.color]));
+        const next = new Map(list.map((h) => [h.location, h]));
         for (const value of highlights.keys()) if (!next.has(value)) void view.deleteAnnotation({ value });
         highlights = next;
-        for (const [value, color] of highlights) void view.addAnnotation({ value, color });
+        for (const value of highlights.keys()) void view.addAnnotation({ value });
       },
       onHighlightClick: (l) => void highlightListeners.push(l),
       onExternalLink: (l) => void linkListeners.push(l),

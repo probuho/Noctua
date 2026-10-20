@@ -1,106 +1,155 @@
-import type { Capabilities, FontFamily, PageLayout, PdfFit, ReaderSettings, TextAlign } from "../../formats";
+import type { Capabilities, FontFamily, PdfFit, ReaderSettings, TextAlign, Theme } from "../../formats";
 import { t } from "../../i18n";
 import { h } from "../dom";
+import { icon } from "../icons";
 import { THEMES } from "../theme";
+import { COLOR_NAMES, HIGHLIGHT_COLORS, type Labels } from "./annotations";
 
 const LINE_HEIGHT = { min: 1, max: 2.4, step: 0.1 };
 const SIZE = { min: 50, max: 300, step: 10 };
+export const SETTINGS_ID = "reader-settings-panel";
 
-function row(label: string, ...controls: Node[]): HTMLElement {
-  return h("div", { class: "setting" }, h("span", { class: "setting-label" }, label), h("div", { class: "setting-controls" }, ...controls));
+let uid = 0;
+const nextId = (prefix: string) => `${prefix}-${++uid}`;
+
+/** A titled group of controls (fieldset + legend, announced as a group). */
+function group(legend: string, ...controls: Array<Node | null | false>): HTMLFieldSetElement {
+  return h("fieldset", { class: "setting" }, h("legend", {}, legend), h("div", { class: "setting-controls" }, ...controls));
 }
 
-function segmented<T extends string>(
-  options: Array<[T, string]>,
-  current: () => T,
+/**
+ * Native radio buttons styled as a segmented control: arrow keys, focus and
+ * screen-reader announcements work out of the box.
+ */
+export function radios<T extends string>(
+  name: string,
+  options: Array<{ value: T; label: string; swatch?: string; icon?: Node }>,
+  current: T,
   onPick: (value: T) => void,
 ): HTMLElement {
-  const group = h("div", { class: "segmented", role: "group" });
-  const draw = () =>
-    group.replaceChildren(
-      ...options.map(([value, label]) =>
+  return h(
+    "div",
+    { class: "segmented", role: "radiogroup" },
+    ...options.map((o) => {
+      const id = nextId(name);
+      const input = h("input", {
+        type: "radio",
+        id,
+        name,
+        value: o.value,
+        checked: o.value === current,
+        onchange: () => onPick(o.value),
+      });
+      return h(
+        "span",
+        { class: "segment" },
+        input,
         h(
-          "button",
-          {
-            "aria-pressed": String(current() === value),
-            onclick: () => {
-              onPick(value);
-              draw();
-            },
-          },
-          label,
+          "label",
+          { for: id },
+          o.icon ?? null,
+          o.swatch ? h("span", { class: "swatch", style: `--swatch:${o.swatch}`, "aria-hidden": "true" }) : null,
+          h("span", {}, o.label),
         ),
-      ),
-    );
-  draw();
-  return group;
+      );
+    }),
+  );
 }
 
-/** Popover with all reading settings; calls `onChange` after every edit. */
-export function createSettingsPanel(settings: ReaderSettings, caps: Capabilities, onChange: () => void) {
+/** − value + stepper with an announced value. */
+function stepper(label: string, value: () => string, onStep: (direction: -1 | 1) => void) {
+  const output = h("output", { "aria-live": "polite" }, value());
+  const step = (direction: -1 | 1) => {
+    onStep(direction);
+    output.textContent = value();
+  };
+  return {
+    el: h(
+      "div",
+      { class: "stepper" },
+      h("button", { type: "button", "aria-label": `${label}: −`, onclick: () => step(-1) }, "−"),
+      output,
+      h("button", { type: "button", "aria-label": `${label}: +`, onclick: () => step(1) }, "+"),
+    ),
+    step,
+  };
+}
+
+const SWATCH: Record<Theme, string> = { light: "#ffffff", sepia: "#f4ecd8", dark: "#1b1b1d", "night-sepia": "#2a2118" };
+
+interface Options {
+  settings: ReaderSettings;
+  caps: Capabilities;
+  labels: Labels | null;
+  onChange: () => void;
+  onLabels: (labels: Labels) => void;
+  onClose: () => void;
+}
+
+/** Non-modal dialog with every reading setting. Rebuilt each time it opens. */
+export function createSettingsPanel({ settings, caps, labels, onChange, onLabels, onClose }: Options) {
   const set = <K extends keyof ReaderSettings>(key: K, value: ReaderSettings[K]) => {
     settings[key] = value;
     onChange();
   };
 
-  const sizeValue = h("output", {}, `${settings.fontSize}%`);
-  const stepSize = (delta: number) => {
-    set("fontSize", Math.min(SIZE.max, Math.max(SIZE.min, settings.fontSize + delta)));
-    sizeValue.textContent = `${settings.fontSize}%`;
-  };
-
-  const lineValue = h("output", {}, settings.lineHeight.toFixed(1));
-  const stepLine = (delta: number) => {
-    const next = Math.round((settings.lineHeight + delta) * 10) / 10;
-    set("lineHeight", Math.min(LINE_HEIGHT.max, Math.max(LINE_HEIGHT.min, next)));
-    lineValue.textContent = settings.lineHeight.toFixed(1);
-  };
-
-  const themeButtons = THEMES.map((theme) =>
-    h("button", {
-      class: `swatch swatch-${theme}`,
-      title: t(theme),
-      "aria-label": t(theme),
-      "aria-pressed": String(settings.theme === theme),
-      onclick: () => {
-        set("theme", theme);
-        themeButtons.forEach((b, i) => b.setAttribute("aria-pressed", String(THEMES[i] === theme)));
-      },
-    }),
+  const size = stepper(
+    caps.reflowable ? t("textSize") : t("zoom"),
+    () => `${settings.fontSize}%`,
+    (d) => set("fontSize", Math.min(SIZE.max, Math.max(SIZE.min, settings.fontSize + d * SIZE.step))),
+  );
+  const lineHeight = stepper(
+    t("lineHeight"),
+    () => settings.lineHeight.toFixed(1),
+    (d) =>
+      set("lineHeight", Math.min(LINE_HEIGHT.max, Math.max(LINE_HEIGHT.min, Math.round((settings.lineHeight + d * LINE_HEIGHT.step) * 10) / 10))),
   );
 
+  const dimmingId = nextId("dimming");
+  const dimmingOut = h("output", { for: dimmingId }, t("dimmingValue", String(Math.round(settings.dimming * 100))));
+  const fontId = nextId("font");
+  const flipId = nextId("flip");
+
+  const titleId = `${SETTINGS_ID}-title`;
   const el = h(
     "section",
-    { class: "settings-panel", hidden: true, "aria-label": t("settings") },
-    h("h2", {}, t("settings")),
-    row(t("theme"), ...themeButtons),
-    row(
+    { id: SETTINGS_ID, class: "settings-panel", role: "dialog", "aria-labelledby": titleId, hidden: true },
+    h("header", { class: "panel-header" }, h("h2", { id: titleId }, t("settings")), h("button", { class: "icon-action", "aria-label": t("close"), title: t("close"), onclick: onClose }, icon("close"))),
+    group(
+      t("theme"),
+      radios<Theme>(
+        "theme",
+        THEMES.map((theme) => ({ value: theme, label: t(theme), swatch: SWATCH[theme] })),
+        settings.theme,
+        (v) => set("theme", v),
+      ),
+    ),
+    group(
       t("dimming"),
       h("input", {
+        id: dimmingId,
         type: "range",
         min: 0,
         max: 0.7,
         step: 0.05,
         value: settings.dimming,
         "aria-label": t("dimming"),
-        oninput: (e: Event) => set("dimming", Number((e.target as HTMLInputElement).value)),
+        oninput: (e: Event) => {
+          set("dimming", Number((e.target as HTMLInputElement).value));
+          dimmingOut.textContent = t("dimmingValue", String(Math.round(settings.dimming * 100)));
+          (e.target as HTMLInputElement).setAttribute("aria-valuetext", dimmingOut.textContent);
+        },
       }),
+      dimmingOut,
     ),
-    row(
-      caps.reflowable ? t("size") : t("zoom"),
-      h("button", { class: "icon", "aria-label": t("smaller"), onclick: () => stepSize(-SIZE.step) }, "−"),
-      sizeValue,
-      h("button", { class: "icon", "aria-label": t("larger"), onclick: () => stepSize(SIZE.step) }, "+"),
-    ),
+    group(caps.reflowable ? t("textSize") : t("zoom"), size.el),
     caps.reflowable &&
-      row(
+      group(
         t("font"),
+        h("label", { class: "visually-hidden", for: fontId }, t("font")),
         h(
           "select",
-          {
-            "aria-label": t("font"),
-            onchange: (e: Event) => set("fontFamily", (e.target as HTMLSelectElement).value as FontFamily),
-          },
+          { id: fontId, onchange: (e: Event) => set("fontFamily", (e.target as HTMLSelectElement).value as FontFamily) },
           ...(
             [
               ["original", t("fontOriginal")],
@@ -111,58 +160,44 @@ export function createSettingsPanel(settings: ReaderSettings, caps: Capabilities
           ).map(([value, label]) => h("option", { value, selected: settings.fontFamily === value }, label)),
         ),
       ),
+    caps.reflowable && group(t("lineHeight"), lineHeight.el),
     caps.reflowable &&
-      row(
-        t("lineHeight"),
-        h("button", { class: "icon", "aria-label": "−", onclick: () => stepLine(-LINE_HEIGHT.step) }, "−"),
-        lineValue,
-        h("button", { class: "icon", "aria-label": "+", onclick: () => stepLine(LINE_HEIGHT.step) }, "+"),
-      ),
-    caps.reflowable &&
-      row(
+      group(
         t("align"),
-        segmented<TextAlign>(
+        radios<TextAlign>(
+          "align",
           [
-            ["original", t("alignOriginal")],
-            ["left", t("alignLeft")],
-            ["justify", t("alignJustify")],
+            { value: "original", label: t("alignOriginal") },
+            { value: "left", label: t("alignLeft") },
+            { value: "justify", label: t("alignJustify") },
           ],
-          () => settings.textAlign,
+          settings.textAlign,
           (v) => set("textAlign", v),
         ),
       ),
-    row(
-      t("pageView"),
-      segmented<PageLayout>(
-        [
-          ["single", t("singlePage")],
-          ["double", t("doublePage")],
-        ],
-        () => settings.layout,
-        (v) => set("layout", v),
-      ),
-    ),
     caps.fit &&
-      row(
+      group(
         t("fit"),
-        segmented<PdfFit>(
+        radios<PdfFit>(
+          "fit",
           [
-            ["page", t("fitPage")],
-            ["width", t("fitWidth")],
+            { value: "page", label: t("fitPage") },
+            { value: "width", label: t("fitWidth") },
           ],
-          () => settings.pdfFit,
+          settings.pdfFit,
           (v) => set("pdfFit", v),
         ),
       ),
-    row(
+    group(
       t("autoFlip"),
       h("input", {
+        id: flipId,
         type: "number",
         min: 3,
         max: 600,
         value: settings.autoFlipSeconds,
         class: "narrow",
-        "aria-label": t("autoFlip"),
+        "aria-label": `${t("autoFlip")} (${t("seconds")})`,
         onchange: (e: Event) => {
           const value = Math.min(600, Math.max(3, Number((e.target as HTMLInputElement).value) || 30));
           set("autoFlipSeconds", value);
@@ -170,14 +205,44 @@ export function createSettingsPanel(settings: ReaderSettings, caps: Capabilities
       }),
       h("span", { class: "muted" }, t("seconds")),
     ),
+    labels &&
+      h(
+        "fieldset",
+        { class: "setting setting-block" },
+        h("legend", {}, t("colorMeanings")),
+        h("p", { class: "muted" }, t("colorMeaningsHint")),
+        ...COLOR_NAMES.map((c) => {
+          const id = nextId(`label-${c}`);
+          return h(
+            "div",
+            { class: "meaning-row" },
+            h("span", { class: "dot", style: `--dot:${HIGHLIGHT_COLORS[c].css}`, "aria-hidden": "true" }),
+            h("label", { for: id, class: "visually-hidden" }, t("labelFor", t(HIGHLIGHT_COLORS[c].color))),
+            h("input", {
+              id,
+              type: "text",
+              maxlength: 30,
+              value: labels[c],
+              onchange: (e: Event) => {
+                const value = (e.target as HTMLInputElement).value.trim();
+                if (value) onLabels({ ...labels, [c]: value });
+              },
+            }),
+          );
+        }),
+      ),
   );
 
   return {
     el,
     isOpen: () => !el.hidden,
-    toggle: () => (el.hidden = !el.hidden),
+    open: () => {
+      el.hidden = false;
+      // Start on the current theme, not on the close button.
+      (el.querySelector<HTMLElement>("input:checked") ?? el.querySelector<HTMLElement>("input, select"))?.focus();
+    },
     close: () => (el.hidden = true),
-    /** Keeps the size readout in sync when changed from a hotkey. */
-    stepSize,
+    /** Used by hotkeys so the readout stays in sync. */
+    stepSize: (direction: -1 | 1) => size.step(direction),
   };
 }

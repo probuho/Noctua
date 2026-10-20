@@ -14,13 +14,18 @@ Estado: **en desarrollo**. Biblioteca local de EPUB y PDF con:
 - búsqueda, orden (recientes, título, autor, progreso, fecha), selección múltiple
   y menú contextual;
 - propiedades editables (título, autor, descripción, portada) y «Continuar leyendo»;
-- notas y resaltados en 5 colores (EPUB), con búsqueda en Google, Wikipedia o el
-  traductor y exportación a HTML o Markdown.
+- notas y resaltados en 5 colores con significado editable (Importante, Idea,
+  Definición, Duda, Cita) en EPUB y PDF, búsqueda en Google, Wikipedia o el traductor;
+- diario de lectura por libro, con entradas vinculadas a la posición;
+- «Notas y diario»: todas las notas y entradas de todos los libros en un solo lugar,
+  con búsqueda, filtros y exportación agrupada por libro;
+- exportación de notas y diario a HTML o Markdown.
 
 Y un lector con:
 
 - índice, búsqueda (texto o número de página), marcadores y «volver» tras un salto;
-- barra de progreso, ir a página, una o dos páginas, ajustar a página/ancho y zoom (PDF);
+- vista de una página, dos páginas o continua; barra de progreso, ir a página,
+  ajustar a página/ancho y zoom (PDF);
 - temas claro, sepia, oscuro y sepia nocturno, atenuación, fuente, tamaño,
   interlineado y alineación (EPUB);
 - pantalla completa, paso automático de página y atajos de teclado (`?` los muestra).
@@ -117,4 +122,5 @@ otra medida que la sustituya.
 | [foliate-js](https://github.com/johnfactotum/foliate-js) | MIT |
 | [PDF.js](https://github.com/mozilla/pdf.js) | Apache-2.0 |
 | [Tauri](https://tauri.app) | MIT / Apache-2.0 |
+| [Lucide](https://lucide.dev) (iconos) | ISC |
 | [rusqlite](https://github.com/rusqlite/rusqlite) / SQLite | MIT / dominio público |

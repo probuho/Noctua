@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::formats::{FormatInfo, FORMATS};
-use crate::library::{AddResult, Annotation, Book, Bookmark, Category, Library};
+use crate::library::{AddResult, Annotation, Book, Bookmark, Category, JournalEntry, Library};
 use std::sync::Mutex;
 use tauri::ipc::Response;
 use tauri::State;
@@ -210,6 +210,64 @@ pub fn save_export(path: String, contents: String) -> Result<()> {
     }
     std::fs::write(path, contents)?;
     Ok(())
+}
+
+// --- Journal -----------------------------------------------------------------------
+
+#[tauri::command]
+pub fn list_journal(book_id: i64, state: State<LibraryState>) -> Result<Vec<JournalEntry>> {
+    lock(&state).journal(book_id)
+}
+
+#[tauri::command]
+pub fn add_journal_entry(
+    book_id: i64,
+    body: String,
+    location: Option<String>,
+    progress: Option<f64>,
+    state: State<LibraryState>,
+) -> Result<Vec<JournalEntry>> {
+    let lib = lock(&state);
+    lib.add_journal_entry(book_id, &body, location.as_deref(), progress)?;
+    lib.journal(book_id)
+}
+
+#[tauri::command]
+pub fn update_journal_entry(id: i64, book_id: i64, body: String, state: State<LibraryState>) -> Result<Vec<JournalEntry>> {
+    let lib = lock(&state);
+    lib.update_journal_entry(id, &body)?;
+    lib.journal(book_id)
+}
+
+#[tauri::command]
+pub fn delete_journal_entry(id: i64, book_id: i64, state: State<LibraryState>) -> Result<Vec<JournalEntry>> {
+    let lib = lock(&state);
+    lib.delete_journal_entry(id)?;
+    lib.journal(book_id)
+}
+
+/// Library-wide notebook: every highlight/note and journal entry.
+#[tauri::command]
+pub fn list_all_annotations(state: State<LibraryState>) -> Result<Vec<Annotation>> {
+    lock(&state).all_annotations()
+}
+
+#[tauri::command]
+pub fn list_all_journal(state: State<LibraryState>) -> Result<Vec<JournalEntry>> {
+    lock(&state).all_journal()
+}
+
+// --- Settings ----------------------------------------------------------------------
+
+/// Settings are opaque JSON strings owned by the frontend.
+#[tauri::command]
+pub fn get_setting(key: String, state: State<LibraryState>) -> Result<Option<String>> {
+    lock(&state).setting(&key)
+}
+
+#[tauri::command]
+pub fn set_setting(key: String, value: String, state: State<LibraryState>) -> Result<()> {
+    lock(&state).set_setting(&key, &value)
 }
 
 // --- Bookmarks -------------------------------------------------------------------

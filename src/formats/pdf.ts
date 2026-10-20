@@ -1,7 +1,21 @@
 import * as pdfjs from "pdfjs-dist";
-import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import type { FormatPlugin, ReadingPosition, TocItem } from "./types";
+import { decodeLocation, encodeLocation, pageOfTarget, rectsInPage, textRanges, type PdfRect } from "./pdf-geometry";
+import type { FormatPlugin, Highlight, ReadingPosition, TextSelection, TocItem } from "./types";
+
+/** One rendered page. */
+interface PageView {
+  n: number;
+  el: HTMLElement;
+  /** Highlights and search matches, painted under the text layer. */
+  marks: HTMLElement;
+  textDiv: HTMLElement;
+  scale: number;
+  task: RenderTask;
+  textLayer: pdfjs.TextLayer;
+  textReady: boolean;
+}
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -76,91 +90,252 @@ export const pdfPlugin: FormatPlugin = {
     const { pdf, task: loading } = await loadPdf(file);
     const toc = await resolveOutline(pdf, await pdf.getOutline());
     const total = pdf.numPages;
+    // Continuous mode lays out every page with this size until it is rendered.
+    const firstBase = (await pdf.getPage(1)).getViewport({ scale: 1 });
 
     const wrapper = document.createElement("div");
     wrapper.className = "pdf-view";
     const spread = document.createElement("div");
-    spread.className = "pdf-spread";
     wrapper.append(spread);
     container.append(wrapper);
 
     const listeners: Array<(p: ReadingPosition) => void> = [];
+    const selectListeners: Array<(s: TextSelection | null) => void> = [];
+    const highlightListeners: Array<(location: string, rect: DOMRect) => void> = [];
     const history: number[] = [];
     const pageText = new Map<number, string>();
+    /** Pages currently rendered, by page number. */
+    const views = new Map<number, PageView>();
     let current = clampPage(Number(location) || 1);
     let opts = { ...settings };
-    let tasks: RenderTask[] = [];
     let generation = 0;
+    let observer: IntersectionObserver | null = null;
+    /** location -> highlight shown in the book. */
+    let highlights = new Map<string, Highlight>();
+    let searchQuery: string | null = null;
 
     function clampPage(n: number): number {
       return Math.min(Math.max(Math.round(n), 1), total);
     }
 
+    const isScroll = () => opts.layout === "scroll";
     const pagesShown = () => (opts.layout === "double" && current < total ? 2 : 1);
 
-    const render = async () => {
-      const gen = ++generation;
-      tasks.forEach((t) => t.cancel());
-      tasks = [];
-      wrapper.dataset.theme = opts.theme;
-      wrapper.dataset.fit = opts.pdfFit;
+    // --- Painting highlights and search matches --------------------------------
 
-      const numbers = pagesShown() === 2 ? [current, current + 1] : [current];
-      const pages = await Promise.all(numbers.map((n) => pdf.getPage(n)));
-      if (gen !== generation) return;
+    const mark = (layer: HTMLElement, r: PdfRect, scale: number, className: string) => {
+      const el = document.createElement("div");
+      el.className = className;
+      Object.assign(el.style, {
+        left: `${r.x * scale}px`,
+        top: `${r.y * scale}px`,
+        width: `${r.w * scale}px`,
+        height: `${r.h * scale}px`,
+      });
+      layer.append(el);
+      return el;
+    };
 
-      // Fit all shown pages side by side, then apply the zoom factor.
-      const bases = pages.map((p) => p.getViewport({ scale: 1 }));
-      const width = bases.reduce((sum, b) => sum + b.width, 0);
+    const paintHighlights = (view: PageView) => {
+      view.marks.querySelectorAll(".pdf-highlight, .note-marker").forEach((el) => el.remove());
+      for (const [value, h] of highlights) {
+        const decoded = decodeLocation(value);
+        if (decoded?.page !== view.n) continue;
+        for (const r of decoded.rects) {
+          const el = mark(view.marks, r, view.scale, "pdf-highlight");
+          el.style.background = h.color;
+          el.dataset.location = value;
+        }
+        // Highlights with a note get a visible marker at their end.
+        const last = decoded.rects[decoded.rects.length - 1];
+        if (h.note && last) {
+          const marker = mark(view.marks, { x: last.x + last.w, y: last.y, w: 0, h: 0 }, view.scale, "note-marker");
+          marker.style.setProperty("--marker-color", h.color);
+        }
+      }
+    };
+
+    const paintSearch = (view: PageView) => {
+      view.marks.querySelectorAll(".pdf-search").forEach((el) => el.remove());
+      if (!searchQuery || !view.textReady) return;
+      for (const range of textRanges(view.textDiv, searchQuery)) {
+        for (const r of rectsInPage(range, view.el, view.scale)) mark(view.marks, r, view.scale, "pdf-search");
+      }
+    };
+
+    // --- Rendering -----------------------------------------------------------------
+
+    const scaleFor = (bases: Array<{ width: number; height: number }>) => {
+      const width = isScroll() ? bases[0].width : bases.reduce((sum, b) => sum + b.width, 0);
       const height = Math.max(...bases.map((b) => b.height));
       const byWidth = wrapper.clientWidth / width;
       const fit = opts.pdfFit === "width" ? byWidth : Math.min(byWidth, wrapper.clientHeight / height);
       // Leave a small margin so the page never triggers scrollbars at 100%.
-      const scale = 0.96 * fit * (opts.fontSize / 100);
+      return 0.96 * fit * (opts.fontSize / 100);
+    };
+
+    /** Draws one page (canvas, marks, selectable text) into `el`. */
+    const fillPage = (el: HTMLElement, page: PDFPageProxy, n: number, scale: number): PageView => {
+      const viewport = page.getViewport({ scale });
       const ratio = window.devicePixelRatio || 1;
+      el.style.width = `${Math.floor(viewport.width)}px`;
+      el.style.height = `${Math.floor(viewport.height)}px`;
+      // The text layer sizes its glyphs from this variable.
+      el.style.setProperty("--total-scale-factor", String(scale));
 
-      const canvases = pages.map((page) => {
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.floor(viewport.width * ratio);
-        canvas.height = Math.floor(viewport.height * ratio);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
-        tasks.push(
-          page.render({
-            canvas,
-            canvasContext: canvas.getContext("2d")!,
-            viewport,
-            transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined,
-          }),
-        );
-        return canvas;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width * ratio);
+      canvas.height = Math.floor(viewport.height * ratio);
+      canvas.style.width = `${Math.floor(viewport.width)}px`;
+      canvas.style.height = `${Math.floor(viewport.height)}px`;
+      const marks = document.createElement("div");
+      marks.className = "pdf-marks";
+      const textDiv = document.createElement("div");
+      textDiv.className = "textLayer";
+      el.replaceChildren(canvas, marks, textDiv);
+
+      const task = page.render({
+        canvas,
+        canvasContext: canvas.getContext("2d")!,
+        viewport,
+        transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined,
       });
-      spread.replaceChildren(...canvases);
-      wrapper.scrollTop = 0;
+      task.promise.catch((err) => {
+        if ((err as Error)?.name !== "RenderingCancelledException") console.error(err);
+      });
+      // Selectable text goes on top of the canvas; scanned pages simply have none.
+      const textLayer = new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: textDiv, viewport });
+      const view: PageView = { n, el, marks, textDiv, scale, task, textLayer, textReady: false };
+      textLayer.render().then(
+        () => {
+          view.textReady = true;
+          paintSearch(view);
+        },
+        () => {},
+      );
+      paintHighlights(view);
+      return view;
+    };
 
-      const last = numbers[numbers.length - 1];
+    const dropView = (view: PageView) => {
+      view.task.cancel();
+      view.textLayer.cancel();
+      view.el.replaceChildren();
+    };
+
+    const clearViews = () => {
+      views.forEach(dropView);
+      views.clear();
+      observer?.disconnect();
+      observer = null;
+    };
+
+    const emitPosition = () => {
+      const last = isScroll() ? current : current + pagesShown() - 1;
       const position: ReadingPosition = {
         location: String(current),
         progress: last / total,
-        label: numbers.length === 2 ? `${current}–${last} / ${total}` : `${current} / ${total}`,
+        label: last !== current ? `${current}–${last} / ${total}` : `${current} / ${total}`,
         page: { current, total },
       };
       listeners.forEach((l) => l(position));
-
-      try {
-        await Promise.all(tasks.map((t) => t.promise));
-      } catch (err) {
-        if ((err as Error)?.name !== "RenderingCancelledException") throw err;
-      }
     };
+
+    const pageEl = (n: number) => spread.children[n - 1] as HTMLElement | undefined;
+
+    const scrollToPage = (n: number) => {
+      const el = pageEl(n);
+      if (el) wrapper.scrollTop = el.offsetTop - 8;
+    };
+
+    const renderPaged = async (gen: number) => {
+      const numbers = pagesShown() === 2 ? [current, current + 1] : [current];
+      const pages = await Promise.all(numbers.map((n) => pdf.getPage(n)));
+      if (gen !== generation) return;
+      const scale = scaleFor(pages.map((p) => p.getViewport({ scale: 1 })));
+      const els = numbers.map(() => Object.assign(document.createElement("div"), { className: "pdf-page" }));
+      spread.replaceChildren(...els);
+      numbers.forEach((n, i) => views.set(n, fillPage(els[i], pages[i], n, scale)));
+      wrapper.scrollTop = 0;
+      emitPosition();
+    };
+
+    /** All pages stacked; only the ones near the viewport are rendered. */
+    const renderScroll = (gen: number) => {
+      const scale = scaleFor([firstBase]);
+      const els = Array.from({ length: total }, (_, i) => {
+        const el = document.createElement("div");
+        el.className = "pdf-page";
+        el.dataset.page = String(i + 1);
+        el.style.width = `${Math.floor(firstBase.width * scale)}px`;
+        el.style.height = `${Math.floor(firstBase.height * scale)}px`;
+        return el;
+      });
+      spread.replaceChildren(...els);
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const el = entry.target as HTMLElement;
+            const n = Number(el.dataset.page);
+            if (entry.isIntersecting && !views.has(n)) {
+              void pdf.getPage(n).then((page) => {
+                if (gen === generation && !views.has(n)) views.set(n, fillPage(el, page, n, scale));
+              });
+            } else if (!entry.isIntersecting && views.has(n)) {
+              // Free far-away pages so long documents stay light.
+              dropView(views.get(n)!);
+              views.delete(n);
+            }
+          }
+        },
+        { root: wrapper, rootMargin: "150% 0px" },
+      );
+      els.forEach((el) => observer!.observe(el));
+      scrollToPage(current);
+      emitPosition();
+    };
+
+    const render = async () => {
+      const gen = ++generation;
+      clearViews();
+      wrapper.dataset.theme = opts.theme;
+      wrapper.dataset.fit = opts.pdfFit;
+      wrapper.dataset.layout = opts.layout;
+      spread.className = isScroll() ? "pdf-column" : "pdf-spread";
+      if (isScroll()) renderScroll(gen);
+      else await renderPaged(gen);
+    };
+
+    // In continuous mode the page at the top third of the view is "current".
+    let scrollFrame = 0;
+    wrapper.addEventListener("scroll", () => {
+      if (!isScroll()) return;
+      cancelAnimationFrame(scrollFrame);
+      scrollFrame = requestAnimationFrame(() => {
+        const probe = wrapper.scrollTop + wrapper.clientHeight / 3;
+        let n = 1;
+        for (const el of spread.children as HTMLCollectionOf<HTMLElement>) {
+          if (el.offsetTop > probe) break;
+          n = Number(el.dataset.page);
+        }
+        if (n !== current) {
+          current = n;
+          emitPosition();
+        }
+      });
+    });
 
     const show = async (n: number, { jump }: { jump: boolean }) => {
       const next = clampPage(n);
       if (next === current) return;
       if (jump) history.push(current);
       current = next;
-      await render();
+      if (isScroll()) {
+        scrollToPage(current);
+        emitPosition();
+      } else {
+        await render();
+      }
     };
 
     const textOf = async (n: number): Promise<string> => {
@@ -172,6 +347,30 @@ export const pdfPlugin: FormatPlugin = {
       }
       return text;
     };
+
+    // --- Selection and clicks on highlights ------------------------------------
+    wrapper.addEventListener("pointerup", (e) => {
+      const selection = document.getSelection();
+      const text = selection?.toString().replace(/\s+/g, " ").trim() ?? "";
+      if (!selection || selection.isCollapsed || !text) {
+        selectListeners.forEach((l) => l(null));
+        // A plain click on a highlight opens it.
+        const hit = [...wrapper.querySelectorAll<HTMLElement>(".pdf-highlight")].find((el) => {
+          const r = el.getBoundingClientRect();
+          return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        });
+        if (hit) highlightListeners.forEach((l) => l(hit.dataset.location!, hit.getBoundingClientRect()));
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const view = [...views.values()].find((v) => v.el.contains(range.startContainer));
+      if (!view) return;
+      const rects = rectsInPage(range, view.el, view.scale);
+      if (!rects.length) return;
+      selectListeners.forEach((l) =>
+        l({ location: encodeLocation(view.n, rects), text, progress: view.n / total, rect: range.getBoundingClientRect() }),
+      );
+    });
 
     // Re-render only when the available area really changes, outside the
     // observer callback, to avoid "ResizeObserver loop" errors.
@@ -187,16 +386,25 @@ export const pdfPlugin: FormatPlugin = {
     resize.observe(wrapper);
 
     return {
-      // Highlights need a PDF text layer, which is not implemented yet.
-      capabilities: { reflowable: false, pages: true, fit: true, annotations: false },
-      next: () => show(current + pagesShown(), { jump: false }),
-      prev: () => show(current - (opts.layout === "double" ? 2 : 1), { jump: false }),
-      goTo: (target) => show(Number(target), { jump: true }),
+      capabilities: { reflowable: false, pages: true, fit: true, annotations: true },
+      next: async () => {
+        if (isScroll()) wrapper.scrollBy({ top: wrapper.clientHeight * 0.9 });
+        else await show(current + pagesShown(), { jump: false });
+      },
+      prev: async () => {
+        if (isScroll()) wrapper.scrollBy({ top: -wrapper.clientHeight * 0.9 });
+        else await show(current - (opts.layout === "double" ? 2 : 1), { jump: false });
+      },
+      goTo: (target) => show(pageOfTarget(target), { jump: true }),
       goToFraction: (fraction) => show(1 + fraction * (total - 1), { jump: true }),
       back: async () => {
         const previous = history.pop();
-        if (previous !== undefined) {
-          current = previous;
+        if (previous === undefined) return;
+        current = previous;
+        if (isScroll()) {
+          scrollToPage(current);
+          emitPosition();
+        } else {
           await render();
         }
       },
@@ -205,6 +413,8 @@ export const pdfPlugin: FormatPlugin = {
       async search(query, onResult, signal) {
         const needle = query.toLocaleLowerCase();
         if (!needle) return;
+        searchQuery = query;
+        views.forEach(paintSearch);
         for (let n = 1; n <= total && !signal.aborted; n++) {
           const text = await textOf(n);
           const haystack = text.toLocaleLowerCase();
@@ -221,22 +431,29 @@ export const pdfPlugin: FormatPlugin = {
           }
         }
       },
-      // Matches are not highlighted on the page yet (no text layer).
-      clearSearch: () => {},
+      clearSearch: () => {
+        searchQuery = null;
+        views.forEach(paintSearch);
+      },
       applySettings: (s) => {
         opts = { ...s };
         void render();
       },
-      onSelect: () => {},
-      clearSelection: () => {},
-      setHighlights: () => {},
-      onHighlightClick: () => {},
+      onSelect: (l) => void selectListeners.push(l),
+      clearSelection: () => document.getSelection()?.removeAllRanges(),
+      setHighlights(list) {
+        highlights = new Map(list.map((h) => [h.location, h]));
+        views.forEach(paintHighlights);
+      },
+      onHighlightClick: (l) => void highlightListeners.push(l),
+      // Link annotations inside PDFs are not rendered yet.
       onExternalLink: () => {},
       onRelocate: (l) => void listeners.push(l),
       destroy: () => {
         resize.disconnect();
         cancelAnimationFrame(frame);
-        tasks.forEach((t) => t.cancel());
+        cancelAnimationFrame(scrollFrame);
+        clearViews();
         void loading.destroy();
         wrapper.remove();
       },

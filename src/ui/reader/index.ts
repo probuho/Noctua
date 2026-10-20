@@ -1,24 +1,40 @@
 import { api, loadBookFile, type Book } from "../../api";
-import { getFormat, type ReaderSession, type ReadingPosition } from "../../formats";
+import { getFormat, type PageLayout, type ReaderSession, type ReadingPosition } from "../../formats";
 import { t } from "../../i18n";
 import { confirmDialog } from "../dialogs";
 import { h } from "../dom";
-import { isFullscreen, setFullscreen, toggleFullscreen } from "../fullscreen";
-import { applyAppTheme, DEFAULT_SETTINGS, loadSettings, saveSettings, THEMES } from "../theme";
-import { actionFor, hotkeySheet, type Action } from "./hotkeys";
-import { createSettingsPanel } from "./settings-panel";
-import { createAnnotator } from "./annotations";
-import { createSidePanel } from "./side-panel";
 import { openExternal } from "../external";
+import { isFullscreen, setFullscreen, toggleFullscreen } from "../fullscreen";
+import { icon, setIcon, type IconName } from "../icons";
+import { applyAppTheme, DEFAULT_SETTINGS, loadSettings, saveSettings, THEMES } from "../theme";
+import { createAnnotator, loadLabels, saveLabels } from "./annotations";
+import { actionFor, hotkeySheet, type Action } from "./hotkeys";
+import { createSettingsPanel, radios, SETTINGS_ID } from "./settings-panel";
+import { createSidePanel, PANEL_ID, PANEL_TABS, type PanelTab } from "./side-panel";
 
 const SAVE_DELAY_MS = 800;
 const SLIDER_STEPS = 1000;
+const HELP_ID = "reader-help-panel";
 
-export async function renderReader(root: HTMLElement, book: Book, onClose: () => void): Promise<void> {
+/** Toolbar button with an icon and a text label (hidden visually on narrow windows). */
+function toolButton(name: IconName, label: string, onclick: () => void, attrs: Record<string, string> = {}) {
+  return h(
+    "button",
+    { class: "tool-button", title: label, onclick, ...attrs },
+    icon(name),
+    h("span", { class: "tool-label" }, label),
+  );
+}
+
+/**
+ * Opens `book` where the reader left off. With `jumpTo` (a note, bookmark or
+ * journal position) it then jumps there, so "Back" returns to the last read spot.
+ */
+export async function renderReader(root: HTMLElement, book: Book, onClose: () => void, jumpTo?: string): Promise<void> {
   const settings = loadSettings();
   applyAppTheme(settings.theme);
 
-  const stage = h("main", { class: "reader-stage" });
+  const stage = h("main", { class: "reader-stage", "aria-label": book.title });
   const dim = h("div", { class: "dim", "aria-hidden": "true" });
   const loading = h("p", { class: "empty" }, "…");
   stage.append(loading);
@@ -28,12 +44,15 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   const body = h("div", { class: "reader-body" }, stage);
   const placeholderBar = h(
     "header",
-    { class: "toolbar" },
-    h("button", { onclick: onClose }, `← ${t("back")}`),
+    { class: "toolbar reader-toolbar" },
+    toolButton("back", t("back"), onClose),
     h("span", { class: "reader-title" }, book.title),
   );
+  const placeholderRail = h("nav", { class: "activity-rail" });
   const placeholderNav = h("footer", { class: "reader-nav" });
-  root.replaceChildren(h("div", { class: "reader" }, placeholderBar, body, placeholderNav));
+  root.replaceChildren(
+    h("div", { class: "reader" }, placeholderBar, h("div", { class: "reader-main" }, placeholderRail, body), placeholderNav),
+  );
 
   let session: ReaderSession;
   try {
@@ -59,90 +78,136 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     pending = null;
   };
 
-  // --- Panels ---------------------------------------------------------------
-  const annotator = session.capabilities.annotations
-    ? createAnnotator({ bookId: book.id, session, searchInBook: (query) => side.search(query) })
+  const updateSettings = () => {
+    saveSettings(settings);
+    applyAppTheme(settings.theme);
+    dim.style.opacity = String(settings.dimming);
+    session.applySettings(settings);
+    syncViewSwitch();
+    if (flipTimer) startAutoFlip();
+  };
+
+  // --- Panels -----------------------------------------------------------------
+  const labels = session.capabilities.annotations ? await loadLabels() : null;
+  const annotator = labels
+    ? createAnnotator({ bookId: book.id, session, labels, searchInBook: (query) => side.search(query) })
     : null;
   const side = createSidePanel({ book, session, annotator, position: () => position });
 
   session.onExternalLink(async (url) => {
     if (await confirmDialog(t("openExternalLink", url), t("open"))) await openExternal(url);
   });
-  let settingsPanel = createSettingsPanel(settings, session.capabilities, () => updateSettings());
-  // Rebuilt on every open so values changed by hotkeys (theme, layout) show correctly.
-  const toggleSettings = () => {
-    help.hidden = true;
-    if (!settingsPanel.isOpen()) {
-      const fresh = createSettingsPanel(settings, session.capabilities, () => updateSettings());
-      settingsPanel.el.replaceWith(fresh.el);
-      settingsPanel = fresh;
-    }
-    settingsPanel.toggle();
-  };
+
   const help = h(
     "section",
-    { class: "settings-panel help-panel", hidden: true, "aria-label": t("hotkeys") },
-    h("h2", {}, t("hotkeys")),
+    { id: HELP_ID, class: "settings-panel help-panel", role: "dialog", "aria-labelledby": `${HELP_ID}-title`, hidden: true },
+    h(
+      "header",
+      { class: "panel-header" },
+      h("h2", { id: `${HELP_ID}-title` }, t("hotkeys")),
+      h("button", { class: "icon-action", "aria-label": t("close"), title: t("close"), onclick: () => closeHelp() }, icon("close")),
+    ),
     hotkeySheet(),
   );
 
-  const updateSettings = () => {
-    saveSettings(settings);
-    applyAppTheme(settings.theme);
-    dim.style.opacity = String(settings.dimming);
-    session.applySettings(settings);
-    if (flipTimer) startAutoFlip();
-  };
+  // The settings panel is rebuilt on every open so it always shows current values.
+  const makeSettings = () =>
+    createSettingsPanel({
+      settings,
+      caps: session.capabilities,
+      labels,
+      onChange: updateSettings,
+      onLabels: (next) => {
+        annotator?.setLabels(next);
+        void saveLabels(next);
+      },
+      onClose: () => closeSettings(),
+    });
+  let settingsPanel = makeSettings();
 
   // --- Toolbar --------------------------------------------------------------
   const positionLabel = h("span", { class: "position" });
-  const flipButton = h(
-    "button",
-    { class: "icon", title: t("autoFlipStart"), "aria-label": t("autoFlipStart"), "aria-pressed": "false", onclick: () => toggleAutoFlip() },
-    "▶",
-  );
-  const iconButton = (label: string, glyph: string, onclick: () => void) =>
-    h("button", { class: "icon", title: label, "aria-label": label, onclick }, glyph);
+  const settingsButton = toolButton("text", t("settingsShort"), () => toggleSettings(), {
+    "aria-expanded": "false",
+    "aria-controls": SETTINGS_ID,
+  });
+  const helpButton = toolButton("help", t("helpShort"), () => toggleHelp(), { "aria-expanded": "false", "aria-controls": HELP_ID });
+  const flipButton = toolButton("play", t("autoShort"), () => toggleAutoFlip(), { "aria-pressed": "false" });
+  flipButton.title = t("autoFlipStart");
+
+  const viewHolder = h("div", { class: "view-switch", role: "group", "aria-label": t("viewMode") });
+  const syncViewSwitch = () =>
+    viewHolder.replaceChildren(
+      radios<PageLayout>(
+        "view-mode",
+        [
+          { value: "single", label: t("viewSingle"), icon: icon("single") },
+          { value: "double", label: t("viewDouble"), icon: icon("double") },
+          { value: "scroll", label: t("viewScroll"), icon: icon("scroll") },
+        ],
+        settings.layout,
+        (value) => {
+          settings.layout = value;
+          updateSettings();
+          viewHolder.querySelector<HTMLInputElement>(`input[value="${value}"]`)?.focus();
+        },
+      ),
+    );
+  syncViewSwitch();
 
   const toolbar = h(
     "header",
     { class: "toolbar reader-toolbar" },
-    h("button", { onclick: () => void close() }, `← ${t("back")}`),
-    iconButton(t("contents"), "☰", () => side.toggle("toc")),
-    h("span", { class: "reader-title" }, book.title),
-    positionLabel,
-    iconButton(t("search"), "⌕", () => side.toggle("search")),
-    iconButton(t("bookmarks"), "⚑", () => side.toggle("bookmarks")),
-    annotator ? iconButton(t("notes"), "✎", () => side.toggle("notes")) : null,
+    toolButton("back", t("back"), () => void close()),
+    h("div", { class: "reader-heading" }, h("span", { class: "reader-title" }, book.title), positionLabel),
+    viewHolder,
+    settingsButton,
     flipButton,
-    iconButton(t("settings"), "Aa", toggleSettings),
-    iconButton(t("fullscreen"), "⛶", () => void toggleFullscreen()),
-    iconButton(t("hotkeys"), "?", () => {
-      settingsPanel.close();
-      help.hidden = !help.hidden;
-    }),
+    toolButton("fullscreen", t("fullscreenShort"), () => void toggleFullscreen()),
+    helpButton,
   );
 
+  // --- Activity rail: one button per side panel, icon + visible label ---------
+  const railButtons = new Map<PanelTab, HTMLButtonElement>();
+  const rail = h(
+    "nav",
+    { class: "activity-rail", "aria-label": t("readerTools") },
+    ...PANEL_TABS.filter((tab) => side.has(tab.id)).map((tab) => {
+      const button = h(
+        "button",
+        {
+          class: "rail-button",
+          "aria-expanded": "false",
+          "aria-controls": PANEL_ID,
+          onclick: () => side.toggle(tab.id),
+        },
+        icon(tab.icon),
+        h("span", {}, t(tab.label)),
+      );
+      railButtons.set(tab.id, button);
+      return button;
+    }),
+  );
+  side.onChange((open) => railButtons.forEach((button, id) => button.setAttribute("aria-expanded", String(open === id))));
+
   // --- Footer: navigation, progress slider, go to page ------------------------
-  const backButton = h("button", { class: "icon", title: t("goBack"), "aria-label": t("goBack"), disabled: true, onclick: () => void session.back() }, "↶");
-  const slider = h("input", {
-    type: "range",
-    class: "progress-slider",
-    min: 0,
-    max: SLIDER_STEPS,
-    value: 0,
-    "aria-label": t("progress"),
-  });
+  const footerButton = (name: IconName, label: string, onclick: () => void, attrs: Record<string, string | boolean> = {}) =>
+    h("button", { class: "tool-button", title: label, onclick, ...attrs }, icon(name), h("span", { class: "tool-label" }, label));
+  const backButton = footerButton("undo", t("goBack"), () => void session.back(), { disabled: true });
+  const sliderId = "reader-progress";
+  const slider = h("input", { id: sliderId, type: "range", class: "progress-slider", min: 0, max: SLIDER_STEPS, value: 0 });
   slider.addEventListener("input", () => {
     sliderDragging = true;
-    positionLabel.textContent = `${Math.round((Number(slider.value) / SLIDER_STEPS) * 100)}%`;
+    const text = `${Math.round((Number(slider.value) / SLIDER_STEPS) * 100)}%`;
+    positionLabel.textContent = text;
+    slider.setAttribute("aria-valuetext", text);
   });
   slider.addEventListener("change", () => {
     sliderDragging = false;
     void session.goToFraction(Number(slider.value) / SLIDER_STEPS);
   });
 
-  const pageInput = h("input", { type: "number", class: "narrow", min: 1, "aria-label": t("page") });
+  const pageInput = h("input", { id: "reader-page", type: "number", class: "narrow", min: 1 });
   const pageTotal = h("span", { class: "muted" });
   const pageForm = session.capabilities.pages
     ? h(
@@ -155,6 +220,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
             pageInput.blur();
           },
         },
+        h("label", { for: "reader-page" }, t("page")),
         pageInput,
         pageTotal,
       )
@@ -163,24 +229,60 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   const nav = h(
     "footer",
     { class: "reader-nav" },
-    iconButton(t("prev"), "‹", () => void session.prev()),
+    footerButton("prev", t("prev"), () => void session.prev()),
     backButton,
+    h("label", { for: sliderId, class: "visually-hidden" }, t("progress")),
     slider,
     pageForm,
-    iconButton(t("next"), "›", () => void session.next()),
+    footerButton("next", t("next"), () => void session.next()),
   );
 
   body.prepend(side.el);
   body.append(settingsPanel.el, help);
   if (annotator) body.append(annotator.popup);
   placeholderBar.replaceWith(toolbar);
+  placeholderRail.replaceWith(rail);
   placeholderNav.replaceWith(nav);
+
+  // --- Floating panels: settings and help -------------------------------------
+  function toggleSettings() {
+    if (settingsPanel.isOpen()) return closeSettings();
+    closeHelp(false);
+    const fresh = makeSettings();
+    settingsPanel.el.replaceWith(fresh.el);
+    settingsPanel = fresh;
+    settingsPanel.open();
+    settingsButton.setAttribute("aria-expanded", "true");
+  }
+  function closeSettings(restoreFocus = true) {
+    if (!settingsPanel.isOpen()) return;
+    settingsPanel.close();
+    settingsButton.setAttribute("aria-expanded", "false");
+    if (restoreFocus) settingsButton.focus();
+  }
+  function toggleHelp() {
+    if (!help.hidden) return closeHelp();
+    closeSettings(false);
+    help.hidden = false;
+    helpButton.setAttribute("aria-expanded", "true");
+    help.querySelector<HTMLElement>("button")?.focus();
+  }
+  function closeHelp(restoreFocus = true) {
+    if (help.hidden) return;
+    help.hidden = true;
+    helpButton.setAttribute("aria-expanded", "false");
+    if (restoreFocus) helpButton.focus();
+  }
 
   // --- Relocation -------------------------------------------------------------
   session.onRelocate((pos) => {
     position = pos;
-    positionLabel.textContent = pos.label ? `${pos.label} · ${Math.round(pos.progress * 100)}%` : `${Math.round(pos.progress * 100)}%`;
-    if (!sliderDragging) slider.value = String(Math.round(pos.progress * SLIDER_STEPS));
+    const pct = `${Math.round(pos.progress * 100)}%`;
+    positionLabel.textContent = pos.label ? `${pos.label} · ${pct}` : pct;
+    if (!sliderDragging) {
+      slider.value = String(Math.round(pos.progress * SLIDER_STEPS));
+      slider.setAttribute("aria-valuetext", pct);
+    }
     if (pos.page && document.activeElement !== pageInput) {
       pageInput.value = String(pos.page.current);
       pageInput.max = String(pos.page.total);
@@ -206,25 +308,28 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     window.clearInterval(flipTimer);
     flipTimer = undefined;
     if (on) startAutoFlip();
-    const label = on ? t("autoFlipStop") : t("autoFlipStart");
-    flipButton.textContent = on ? "⏸" : "▶";
-    flipButton.title = label;
-    flipButton.setAttribute("aria-label", label);
+    setIcon(flipButton, on ? "pause" : "play");
+    flipButton.title = on ? t("autoFlipStop") : t("autoFlipStart");
     flipButton.setAttribute("aria-pressed", String(on));
   }
 
   // --- Hotkeys ----------------------------------------------------------------
+  /** Closes the topmost floating thing; returns false when nothing was open. */
   const closeOverlays = (): boolean => {
     if (annotator?.isOpen()) {
       annotator.hide();
       session.clearSelection();
       return true;
     }
-    const open = side.isOpen() || settingsPanel.isOpen() || !help.hidden;
-    side.close();
-    settingsPanel.close();
-    help.hidden = true;
-    return open;
+    if (settingsPanel.isOpen()) return closeSettings(), true;
+    if (!help.hidden) return closeHelp(), true;
+    const tab = side.current();
+    if (tab) {
+      side.close();
+      railButtons.get(tab)?.focus();
+      return true;
+    }
+    return false;
   };
 
   const run: Record<Action, () => void | Promise<void>> = {
@@ -236,9 +341,19 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     bookmark: () => side.addBookmark(),
     contents: () => side.toggle("toc"),
     notes: () => side.toggle("notes"),
-    larger: () => settingsPanel.stepSize(10),
-    smaller: () => settingsPanel.stepSize(-10),
-    resetSize: () => settingsPanel.stepSize(DEFAULT_SETTINGS.fontSize - settings.fontSize),
+    journal: () => side.toggle("journal"),
+    larger: () => {
+      settings.fontSize = Math.min(300, settings.fontSize + 10);
+      updateSettings();
+    },
+    smaller: () => {
+      settings.fontSize = Math.max(50, settings.fontSize - 10);
+      updateSettings();
+    },
+    resetSize: () => {
+      settings.fontSize = DEFAULT_SETTINGS.fontSize;
+      updateSettings();
+    },
     fullscreen: () => void toggleFullscreen(),
     back: () => session.back(),
     theme: () => {
@@ -246,10 +361,11 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
       updateSettings();
     },
     layout: () => {
-      settings.layout = settings.layout === "double" ? "single" : "double";
+      const order: PageLayout[] = ["single", "double", "scroll"];
+      settings.layout = order[(order.indexOf(settings.layout) + 1) % order.length];
       updateSettings();
     },
-    help: () => void (help.hidden = !help.hidden),
+    help: () => toggleHelp(),
     close: async () => {
       if (closeOverlays()) return;
       if (await isFullscreen()) return setFullscreen(false);
@@ -267,8 +383,8 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
 
   // Clicking the page closes floating panels, like most readers.
   stage.addEventListener("pointerdown", () => {
-    settingsPanel.close();
-    help.hidden = true;
+    closeSettings(false);
+    closeHelp(false);
   });
 
   async function close() {
@@ -285,4 +401,5 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   }
 
   updateSettings();
+  if (jumpTo) await session.goTo(jumpTo);
 }

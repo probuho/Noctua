@@ -1,7 +1,7 @@
 // Dev-only: runs the real app UI in a plain browser with an in-memory fake of
 // the Rust backend (Tauri's mockIPC), using the books in dev/fixtures.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import type { Annotation, Book, Bookmark, Category } from "../src/api";
+import type { Annotation, Book, Bookmark, Category, JournalEntry } from "../src/api";
 
 // [fixture file, path shown in the library]
 const FIXTURES: Array<[string, string]> = [
@@ -15,6 +15,8 @@ const files = new Map<number, ArrayBuffer>();
 let books: Book[] = [];
 let bookmarks: Bookmark[] = [];
 let annotations: Annotation[] = [];
+let journal: JournalEntry[] = [];
+const settingsStore = new Map<string, string>();
 /** Files "saved" through the export dialog, for automated checks. */
 const exportsWritten: Record<string, string> = {};
 const opened: string[] = [];
@@ -63,6 +65,8 @@ const each = (ids: number[], fn: (b: Book) => void) => ids.forEach((id) => fn(by
 const marksOf = (bookId: number) => bookmarks.filter((m) => m.bookId === bookId).sort((a, b) => a.progress - b.progress);
 const notesOf = (bookId: number) =>
   annotations.filter((n) => n.bookId === bookId).sort((a, b) => a.progress - b.progress || a.id - b.id);
+const journalOf = (bookId: number) =>
+  journal.filter((j) => j.bookId === bookId).sort((a, b) => b.createdAt - a.createdAt);
 const withOriginal = (b: Book) => ({ ...b, hasOriginalCover: originalCovers.has(b.id), annotationCount: notesOf(b.id).length });
 
 (window as any).__HARNESS__ = true;
@@ -170,6 +174,40 @@ mockIPC((cmd, payload) => {
       return notesOf(a.bookId);
     case "clear_annotations":
       annotations = annotations.filter((n) => n.bookId !== a.bookId);
+      return null;
+    case "list_all_annotations": {
+      const live = new Set(books.filter((b) => b.deletedAt === null).map((b) => b.id));
+      return annotations.filter((n) => live.has(n.bookId)).sort((x, y) => y.createdAt - x.createdAt || y.id - x.id);
+    }
+    case "list_all_journal": {
+      const live = new Set(books.filter((b) => b.deletedAt === null).map((b) => b.id));
+      return journal.filter((j) => live.has(j.bookId)).sort((x, y) => y.createdAt - x.createdAt);
+    }
+    case "list_journal":
+      return journalOf(a.bookId);
+    case "add_journal_entry":
+      if (!a.body?.trim()) throw new Error("journal entry is empty");
+      journal.push({
+        id: nextId++,
+        bookId: a.bookId,
+        body: a.body.trim(),
+        location: a.location ?? null,
+        progress: a.progress ?? null,
+        createdAt: now() + nextId, // keeps a stable newest-first order
+        updatedAt: now() + nextId,
+      });
+      return journalOf(a.bookId);
+    case "update_journal_entry":
+      Object.assign(journal.find((j) => j.id === a.id)!, { body: a.body.trim(), updatedAt: now() + 3600 });
+      return journalOf(a.bookId);
+    case "delete_journal_entry":
+      journal = journal.filter((j) => j.id !== a.id);
+      return journalOf(a.bookId);
+    case "get_setting":
+      return settingsStore.get(a.key) ?? null;
+    case "set_setting":
+      settingsStore.set(a.key, a.value);
+      document.documentElement.dataset.harnessSettings = JSON.stringify(Object.fromEntries(settingsStore));
       return null;
     case "save_export":
       exportsWritten[a.path] = a.contents;

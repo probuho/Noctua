@@ -54,7 +54,7 @@ Para comprobar que nada importante se ha roto tras un cambio:
 - [ ] **R3** Reabrir el EPUB → continúa en la misma página.
 - [ ] **R4** Seleccionar texto, elegir un color → queda resaltado y aparece en el panel **Notas**.
 - [ ] **R5** Abrir el PDF, ir a la página 2 con el campo de página → muestra la página 2.
-- [ ] **R6** Cambiar el tema a oscuro en **Aa** → cambia la app y el libro.
+- [ ] **R6** Cambiar el tema a oscuro en **Ajustes** → cambia la app y el libro.
 - [ ] **R7** Mover un libro a la papelera y restaurarlo.
 - [ ] **R8** Cerrar la app y volver a abrirla → todo sigue igual (progreso, notas, papelera).
 
@@ -165,33 +165,41 @@ Para comprobar que nada importante se ha roto tras un cambio:
 
 ## B. Lector (todos los formatos)
 
+Distribución del lector: arriba, **Biblioteca**, el título con la posición,
+el selector de vista (**Una página · Dos páginas · Continuo**), **Ajustes**,
+**Auto**, **Pantalla** y **Ayuda**. A la izquierda, la barra de actividades con
+**Índice**, **Buscar**, **Marcadores**, **Notas** y **Diario**. Abajo,
+**Anterior**, **Volver**, la barra de progreso y **Siguiente**.
+
+
 - [ ] **B1** Abrir un libro.
   *Esperado:* se ve la primera página (o la última posición guardada) sin quedarse en blanco.
 - [ ] **B2** Pasar página con `→`, `←`, `AvPág`, `RePág`, `Espacio` y los botones **‹ ›** del pie.
 - [ ] **B3** `Inicio` y `Fin` van al principio y al final del libro.
 - [ ] **B4** Arrastrar la **barra de progreso** del pie hasta la mitad y soltar.
   *Esperado:* salta a ~50%. Justo después, `→` sigue funcionando (la barra no se queda con el foco).
-- [ ] **B5** Saltar a un capítulo desde el **Índice** (`☰` o `Ctrl+T`) y pulsar **↶ Volver** (o `Alt+←`).
+- [ ] **B5** Saltar a un capítulo desde **Índice** (o `Ctrl+T`) y pulsar **Volver** en el pie (o `Alt+←`).
   *Esperado:* vuelve a donde estabas antes del salto. El botón está desactivado si no hay a dónde volver.
-- [ ] **B6** **Marcadores** (`⚑`): **Añadir marcador** en dos sitios distintos.
+- [ ] **B6** **Marcadores**: **Añadir marcador** en dos sitios distintos.
   *Esperado:* la lista los ordena por posición; al pulsar uno, salta allí.
 - [ ] **B7** `Ctrl+B` añade un marcador en la posición actual.
 - [ ] **B8** Quitar un marcador con **×**; **Borrar todos** pide confirmación.
-- [ ] **B9** **Buscar** (`⌕` o `Ctrl+F`): buscar una palabra que aparezca varias veces.
+- [ ] **B9** **Buscar** (o `Ctrl+F`): buscar una palabra que aparezca varias veces.
   *Esperado:* lista de resultados con el contexto y la palabra resaltada; «N resultados». Al pulsar uno, salta allí.
 - [ ] **B10** Buscar algo que no existe → «Sin resultados».
-- [ ] **B11** Pantalla completa con `⛶` o `F11`; `Esc` sale de pantalla completa.
-- [ ] **B12** **Paso automático** (`▶`): cambia de página solo cada N segundos (por defecto 30; ajústalo a 5 en **Aa** para probar). `⏸` lo detiene. Se para solo al llegar al final.
+- [ ] **B11** Pantalla completa con **Pantalla** o `F11`; `Esc` sale de pantalla completa.
+- [ ] **B12** **Auto**: cambia de página solo cada N segundos (por defecto 30; ajústalo a 5 en **Ajustes → Paso automático** para probar). Pulsarlo otra vez lo detiene. Se para solo al llegar al final.
 - [ ] **B13** `?` muestra la lista de atajos de teclado.
 - [ ] **B14** `Esc` por orden: cierra el menú o panel abierto → sale de pantalla completa → vuelve a la biblioteca.
 - [ ] **B15** Leer hasta el final y volver a la biblioteca.
   *Esperado:* pregunta «Has terminado «…». ¿Marcarlo como leído?». Al aceptar aparece ✓ en la tarjeta.
 
-### Ajustes de lectura (**Aa**)
+### Vista y ajustes de lectura
 
 - [ ] **B16** Temas **Claro**, **Sepia**, **Oscuro** y **Sepia nocturno**: cambian la interfaz y el libro. `T` los recorre en orden.
 - [ ] **B17** **Atenuación**: oscurece la página sin cambiar el tema.
-- [ ] **B18** **Una página / Dos páginas**; `D` alterna entre ambas. El panel **Aa** muestra siempre la opción activa, aunque se haya cambiado con la tecla.
+- [ ] **B18** El selector de vista de la barra superior cambia entre **Una página**, **Dos páginas** y **Continuo**; `D` las recorre en orden. La opción activa se ve marcada siempre.
+- [ ] **B18b** **Continuo**: el libro se lee desplazándose hacia abajo, sin cortes de página. La posición del título y la barra de progreso se actualizan al desplazarse.
 - [ ] **B19** Tamaño con **− / +**, `Ctrl+=` y `Ctrl+-`; `Ctrl+0` vuelve a 100%.
 - [ ] **B20** Cerrar y abrir la app → los ajustes se conservan.
 
@@ -212,19 +220,24 @@ Para comprobar que nada importante se ha roto tras un cambio:
 
 - [ ] **D1** El campo **Página** del pie: escribir un número y pulsar `Enter` salta a esa página. Muestra «/ total».
 - [ ] **D2** **Ajustar**: **A la página** (la página entera cabe) y **Al ancho** (ocupa el ancho; se desplaza en vertical).
-- [ ] **D3** **Zoom** − / + en **Aa**.
+- [ ] **D3** **Zoom** − / + en **Ajustes**.
 - [ ] **D4** **Dos páginas** muestra pares (1–2, 3–4…) y `→` avanza de dos en dos.
 - [ ] **D5** Índice: si el PDF tiene marcadores internos, aparecen en **Índice** y llevan a su página.
 - [ ] **D6** Buscar un número, por ejemplo «12».
   *Esperado:* el primer resultado es «Ir a la página 12», seguido de las coincidencias en el texto.
 - [ ] **D7** **PDF escaneado**: las páginas muestran las imágenes, no salen en blanco.
-- [ ] **D8** Temas oscuro y sepia: el PDF se ve invertido o en sepia, pero legible.
-- [ ] **D9** En PDF **no** aparecen el botón ni la pestaña **Notas**. *(Las notas en PDF aún no están implementadas.)*
+- [ ] **D8** Con cualquier tema (Sepia, Oscuro, Sepia nocturno) las páginas del PDF conservan sus colores originales; solo cambia la interfaz alrededor. **Atenuación** oscurece la página si molesta el brillo.
+- [ ] **D9** Buscar una palabra con el panel abierto.
+  *Esperado:* las coincidencias se marcan con un recuadro rojo sobre la página (en las dos páginas si la vista es doble). Al cerrar el panel desaparecen.
+- [ ] **D10** Seleccionar texto con el ratón en un PDF con texto (no escaneado) y copiarlo con `Ctrl+C`.
+  *Esperado:* se pega el texto seleccionado.
 
-## E. Notas y resaltados (EPUB)
+## E. Notas y resaltados (EPUB y PDF)
+
+Haz las pruebas E1–E20 con un EPUB y repite al menos E1–E7, E12 y E15 con un PDF de texto.
 
 - [ ] **E1** Seleccionar una frase con el ratón.
-  *Esperado:* aparece encima un menú con 5 colores, **Añadir nota**, **Copiar**, **Buscar en el libro**, **Google**, **Wikipedia** y **Traducir**.
+  *Esperado:* aparece encima un menú «Resaltar como» con 5 opciones que muestran color **y nombre** (Importante, Idea, Definición, Duda, Cita), **Añadir nota**, **Copiar**, **Buscar en el libro**, **Google**, **Wikipedia** y **Traducir**.
 - [ ] **E2** Elegir un color.
   *Esperado:* la frase queda resaltada en ese color y el menú se cierra.
 - [ ] **E3** Seleccionar otra frase → **Añadir nota** → escribir varias líneas → **Guardar**.
@@ -236,22 +249,61 @@ Para comprobar que nada importante se ha roto tras un cambio:
   *Esperado:* el resaltado se queda, pero sin nota.
 - [ ] **E7** **Quitar resaltado** → el color desaparece del texto y de la lista.
 - [ ] **E8** **Copiar** → pegar en otra aplicación: llega el texto seleccionado.
-- [ ] **E9** **Buscar en el libro** → se abre la pestaña **Buscar** con esa frase y sus resultados.
+- [ ] **E9** **Buscar en el libro** → se abre **Buscar** con esa frase y sus resultados.
 - [ ] **E10** **Google**, **Wikipedia** y **Traducir** abren el navegador con el texto seleccionado (Wikipedia y Traductor en tu idioma).
 - [ ] **E11** `Esc` con el menú abierto lo cierra y quita la selección.
-- [ ] **E12** Panel **Notas** (`✎` o tecla `N`): lista en orden de lectura, con el color a la izquierda, la cita, la nota y el %. Al pulsar una, salta a ese texto.
+- [ ] **E12** **Notas** (o tecla `N`): lista en orden de lectura con el significado del color (por ejemplo «● Duda»), la cita, la nota y el %. Al pulsar una, salta a ese texto.
 - [ ] **E13** **Filtrar notas**: busca en la cita y en la nota.
-- [ ] **E14** **✎** en la lista abre el editor de esa nota; **×** la quita.
+- [ ] **E14** El botón de lápiz de una nota abre su editor; el de la papelera la quita.
 - [ ] **E15** **Exportar ▾ → Página web (HTML)**: elegir dónde guardar y abrir el archivo en el navegador.
   *Esperado:* título, autor, fecha y cada cita con su color y su nota.
 - [ ] **E16** **Exportar ▾ → Markdown**: abrir el `.md` en un editor (Obsidian, VS Code).
   *Esperado:* cada cita como `>`, la nota debajo **fuera** de la cita y el % en cursiva.
-- [ ] **E17** **🗑 Borrar todas** → confirmar → la lista queda vacía y el texto sin resaltados.
+- [ ] **E17** El botón de papelera junto a **Exportar** (Borrar todas) → confirmar → la lista queda vacía y el texto sin resaltados.
 - [ ] **E18** Cerrar y reabrir el libro → resaltados y notas siguen ahí, también en capítulos que no estaban cargados.
 - [ ] **E19** En la biblioteca, la tarjeta muestra `✎ N` con el número de notas, y **Propiedades** también lo indica.
 - [ ] **E20** Seleccionar texto, cambiar de página sin elegir nada → el menú desaparece.
 
+- [ ] **E20b** Un resaltado con nota muestra un pequeño bocadillo al final del texto resaltado; uno sin nota, no.
+- [ ] **E20c** **Ajustes → Significado de los colores**: cambiar «Importante» por «Clave».
+  *Esperado:* el menú de selección, la lista de **Notas** y la exportación usan «Clave». Se mantiene al reiniciar la app.
+- [ ] **E20d** En **Notas**, los filtros «Todas», cada significado usado y «Con nota» muestran cuántas hay y filtran la lista.
+
+### Diario de lectura
+
+- [ ] **J1** **Diario** (o tecla `J`): el cursor queda en el cuadro de texto. Escribir una reflexión y pulsar **Guardar en el diario**.
+  *Esperado:* aparece arriba de la lista con fecha y hora y un enlace «Ir a la posición (N%)».
+- [ ] **J2** Desmarcar **Vincular a la posición actual** y guardar otra entrada.
+  *Esperado:* se guarda sin enlace de posición.
+- [ ] **J3** Ir a otra parte del libro y pulsar «Ir a la posición» de J1 → vuelve a donde estabas al escribirla.
+- [ ] **J4** Editar una entrada (lápiz) y guardar → cambia el texto y aparece «· editada». Cancelar deja el texto como estaba.
+- [ ] **J5** Eliminar una entrada (papelera) pide confirmación.
+- [ ] **J6** Intentar guardar una entrada vacía → no se guarda.
+- [ ] **J7** **Notas → Exportar** incluye la sección «Diario de lectura» con todas las entradas.
+- [ ] **J8** Cerrar la app y volver a abrir el libro → las entradas siguen ahí.
+
+### Solo PDF
+
+- [ ] **E21** Resaltar texto y luego cambiar el zoom, **Ajustar al ancho** y **Una / Dos páginas**.
+  *Esperado:* el resaltado sigue exactamente sobre el mismo texto.
+- [ ] **E22** Resaltar en la página 1, ir al final y pulsar la nota en el panel **Notas**.
+  *Esperado:* vuelve a la página 1 con el resaltado visible.
+- [ ] **E23** En un PDF escaneado (sin texto) no se puede seleccionar nada y no aparece el menú. Es lo esperado.
+
 ---
+
+## N. Notas y diario de toda la biblioteca
+
+- [ ] **N1** En la barra lateral de la biblioteca, **Notas y diario** muestra el total de resaltados y entradas de diario de todos los libros.
+- [ ] **N2** Al entrar, la rejilla de libros se sustituye por la lista; arriba desaparecen el buscador de libros, el orden y **Seleccionar**.
+- [ ] **N3** **Mostrar**: Todo / Resaltados / Con nota / Diario filtran por tipo.
+- [ ] **N4** **Significado**: cada chip muestra solo los resaltados de ese color (por su nombre, p. ej. «Duda»).
+- [ ] **N5** El desplegable de libro limita la lista a un libro.
+- [ ] **N6** **Buscar en notas y diario** busca en el texto resaltado, en las notas, en el diario y en título/autor.
+- [ ] **N7** **Orden**: «Más recientes» (todo mezclado por fecha) y «Por libro» (agrupado, con los resaltados en orden de lectura).
+- [ ] **N8** **Abrir en el libro** abre el libro justo en ese resaltado o entrada; **Volver** (pie del lector) regresa a donde ibas leyendo.
+- [ ] **N9** **Exportar lo mostrado** → HTML o Markdown: un solo documento con una sección por libro y solo lo que estaba filtrado.
+- [ ] **N10** Mover un libro a la papelera quita sus notas de esta vista; restaurarlo las devuelve.
 
 ## F. Persistencia y actualización
 
@@ -261,13 +313,23 @@ Para comprobar que nada importante se ha roto tras un cambio:
   *Esperado:* mensaje de error al abrir, sin cierre de la app. *(Relocalizar libros movidos aún no está implementado.)*
 - [ ] **F3** Si tenías una biblioteca de una versión anterior, al abrir la nueva versión los libros, el progreso y las portadas siguen ahí (la base de datos se actualiza sola).
 
+## G2. Accesibilidad (WCAG 2.2 AA)
+
+- [ ] **W1** Recorrer el lector solo con `Tab`: todos los botones son alcanzables y muestran un contorno de foco visible.
+- [ ] **W2** Cada botón tiene texto visible o, en ventanas estrechas, un nombre que el lector de pantalla anuncia (por ejemplo «Ajustes», «Notas»).
+- [ ] **W3** En el selector de vista y en los grupos de **Ajustes**, las flechas del teclado cambian de opción.
+- [ ] **W4** Abrir **Ajustes** lleva el foco al tema actual; `Esc` lo cierra y devuelve el foco al botón **Ajustes**. Igual con **Ayuda** y con los paneles de la barra lateral.
+- [ ] **W5** Con un lector de pantalla (NVDA, VoiceOver o Narrador): los botones de la barra lateral anuncian si su panel está abierto («expandido / contraído»).
+- [ ] **W6** Los resaltados nunca dependen solo del color: siempre se acompaña del nombre del significado.
+- [ ] **W7** Con el zoom del sistema al 200%, la app sigue siendo usable sin desplazamiento horizontal.
+
 ## G. Ventana estrecha / móvil
 
 Reduce la ventana a unos 400 px de ancho (o prueba en el teléfono cuando haya versión móvil):
 
 - [ ] **G1** La barra lateral de la biblioteca se convierte en una fila de botones desplazable.
 - [ ] **G2** La barra de selección no tapa las tarjetas.
-- [ ] **G3** En el lector, el panel lateral se superpone al libro y se puede cerrar.
+- [ ] **G3** En el lector, la barra de actividades pasa abajo (con sus nombres visibles); los botones de arriba quedan como iconos con nombre accesible; el panel lateral se superpone al libro y se puede cerrar.
 - [ ] **G4** No aparece desplazamiento horizontal en ninguna pantalla.
 
 ## H. Seguridad
@@ -306,8 +368,8 @@ cambios no se guardan.
 
 ## Limitaciones conocidas
 
-- Notas y resaltados solo en EPUB; en PDF aún no se puede seleccionar texto.
-- La búsqueda en PDF encuentra la página, pero no resalta la palabra.
+- En PDF los enlaces internos y externos del documento aún no son clicables.
+- Los PDF escaneados no tienen texto seleccionable (haría falta OCR).
 - Los PDF con contraseña no piden la contraseña.
 - Los libros movidos o renombrados en el disco no se relocalizan.
 - Sin exportar/importar la biblioteca, texto a voz ni impresión (fases siguientes).

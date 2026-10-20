@@ -72,7 +72,10 @@ def make_pdf(path: Path, pages: int = 3) -> None:
     font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     kids = []
     for n in range(1, pages + 1):
-        text = f"BT /F1 36 Tf 72 700 Td (Pagina {n} de {pages}) Tj ET"
+        # A heading plus a few lines of plain ASCII text to select and search.
+        lines = [f"Linea {i} del parrafo de prueba en la pagina {n}." for i in range(1, 6)]
+        body = " ".join(f"0 -24 Td ({line}) Tj" for line in lines)
+        text = f"BT /F1 36 Tf 72 700 Td (Pagina {n} de {pages}) Tj /F1 16 Tf 0 -24 Td {body} ET"
         stream = add(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
         kids.append(add(
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "

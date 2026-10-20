@@ -18,8 +18,8 @@ function showLibrary(): void {
   void renderLibrary(root, showReader);
 }
 
-function showReader(book: Book): void {
-  void renderReader(root, book, showLibrary);
+function showReader(book: Book, jumpTo?: string): void {
+  void renderReader(root, book, showLibrary, jumpTo);
 }
 
 applyAppTheme(loadSettings().theme);

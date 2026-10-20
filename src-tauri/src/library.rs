@@ -76,6 +76,19 @@ pub struct Annotation {
     pub updated_at: i64,
 }
 
+/// A free-form reading journal entry, optionally tied to a position.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalEntry {
+    pub id: i64,
+    pub book_id: i64,
+    pub body: String,
+    pub location: Option<String>,
+    pub progress: Option<f64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Debug, Default, Serialize)]
 pub struct AddResult {
     pub added: Vec<Book>,
@@ -144,6 +157,20 @@ const MIGRATIONS: &[&str] = &[
         created_at  INTEGER NOT NULL,
         updated_at  INTEGER NOT NULL,
         UNIQUE (book_id, location)
+    );",
+    // 4: reading journal and app settings stored as JSON values.
+    "CREATE TABLE journal_entries (
+        id          INTEGER PRIMARY KEY,
+        book_id     INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+        body        TEXT NOT NULL,
+        location    TEXT,
+        progress    REAL,
+        created_at  INTEGER NOT NULL,
+        updated_at  INTEGER NOT NULL
+    );
+    CREATE TABLE settings (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL
     );",
 ];
 
@@ -425,12 +452,12 @@ impl Library {
 
     // --- Annotations ---------------------------------------------------------------
 
-    pub fn annotations(&self, book_id: i64) -> Result<Vec<Annotation>> {
-        let mut stmt = self.conn.prepare(
+    fn query_annotations(&self, filter: &str, params: impl rusqlite::Params) -> Result<Vec<Annotation>> {
+        let mut stmt = self.conn.prepare(&format!(
             "SELECT id, book_id, location, text, note, color, progress, created_at, updated_at
-             FROM annotations WHERE book_id = ?1 ORDER BY progress, id",
-        )?;
-        let rows = stmt.query_map([book_id], |r| {
+             FROM annotations {filter}"
+        ))?;
+        let rows = stmt.query_map(params, |r| {
             Ok(Annotation {
                 id: r.get(0)?,
                 book_id: r.get(1)?,
@@ -444,6 +471,18 @@ impl Library {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn annotations(&self, book_id: i64) -> Result<Vec<Annotation>> {
+        self.query_annotations("WHERE book_id = ?1 ORDER BY progress, id", [book_id])
+    }
+
+    /// Every annotation of books not in the trash, newest first.
+    pub fn all_annotations(&self) -> Result<Vec<Annotation>> {
+        self.query_annotations(
+            "WHERE book_id IN (SELECT id FROM books WHERE deleted_at IS NULL) ORDER BY created_at DESC, id DESC",
+            [],
+        )
     }
 
     /// Highlighting the same range again updates its color (and note, if given).
@@ -485,6 +524,81 @@ impl Library {
 
     pub fn clear_annotations(&self, book_id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM annotations WHERE book_id = ?1", [book_id])?;
+        Ok(())
+    }
+
+    // --- Journal -------------------------------------------------------------------
+
+    fn query_journal(&self, filter: &str, params: impl rusqlite::Params) -> Result<Vec<JournalEntry>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT id, book_id, body, location, progress, created_at, updated_at
+             FROM journal_entries {filter} ORDER BY created_at DESC, id DESC"
+        ))?;
+        let rows = stmt.query_map(params, |r| {
+            Ok(JournalEntry {
+                id: r.get(0)?,
+                book_id: r.get(1)?,
+                body: r.get(2)?,
+                location: r.get(3)?,
+                progress: r.get(4)?,
+                created_at: r.get(5)?,
+                updated_at: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Newest first, like a diary.
+    pub fn journal(&self, book_id: i64) -> Result<Vec<JournalEntry>> {
+        self.query_journal("WHERE book_id = ?1", [book_id])
+    }
+
+    /// Every journal entry of books not in the trash, newest first.
+    pub fn all_journal(&self) -> Result<Vec<JournalEntry>> {
+        self.query_journal("WHERE book_id IN (SELECT id FROM books WHERE deleted_at IS NULL)", [])
+    }
+
+    pub fn add_journal_entry(&self, book_id: i64, body: &str, location: Option<&str>, progress: Option<f64>) -> Result<()> {
+        let body = non_empty(Some(body)).ok_or_else(|| Error::Invalid("journal entry is empty".into()))?;
+        let at = now();
+        self.conn.execute(
+            "INSERT INTO journal_entries (book_id, body, location, progress, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            params![book_id, body, location, progress.map(|p| p.clamp(0.0, 1.0)), at],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_journal_entry(&self, id: i64, body: &str) -> Result<()> {
+        let body = non_empty(Some(body)).ok_or_else(|| Error::Invalid("journal entry is empty".into()))?;
+        self.conn.execute(
+            "UPDATE journal_entries SET body = ?2, updated_at = ?3 WHERE id = ?1",
+            params![id, body, now()],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_journal_entry(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM journal_entries WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    // --- Settings ------------------------------------------------------------------
+
+    /// Raw JSON stored under `key`, if any.
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0))
+            .optional()?)
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
         Ok(())
     }
 
@@ -709,6 +823,61 @@ mod tests {
         lib.delete(&[id]).unwrap();
         let orphans: i64 = lib.conn.query_row("SELECT COUNT(*) FROM annotations", [], |r| r.get(0)).unwrap();
         assert_eq!(orphans, 0);
+    }
+
+    #[test]
+    fn journal_entries_and_settings() {
+        let mut lib = Library::open_in_memory().unwrap();
+        let id = lib.add_paths(&[pdf(&temp_dir("journal"), "j.pdf")]).unwrap().added[0].id;
+
+        lib.add_journal_entry(id, "First thoughts", Some("4"), Some(0.4)).unwrap();
+        lib.add_journal_entry(id, "General idea", None, None).unwrap();
+        assert!(matches!(lib.add_journal_entry(id, "   ", None, None), Err(Error::Invalid(_))));
+
+        let entries = lib.journal(id).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].body, "General idea", "newest first");
+        assert_eq!(entries[1].location.as_deref(), Some("4"));
+
+        lib.update_journal_entry(entries[1].id, "Edited").unwrap();
+        assert!(matches!(lib.update_journal_entry(entries[1].id, ""), Err(Error::Invalid(_))));
+        assert_eq!(lib.journal(id).unwrap()[1].body, "Edited");
+        lib.delete_journal_entry(entries[0].id).unwrap();
+        assert_eq!(lib.journal(id).unwrap().len(), 1);
+
+        assert_eq!(lib.setting("labels").unwrap(), None);
+        lib.set_setting("labels", r#"{"yellow":"Important"}"#).unwrap();
+        lib.set_setting("labels", r#"{"yellow":"Key"}"#).unwrap();
+        assert_eq!(lib.setting("labels").unwrap().as_deref(), Some(r#"{"yellow":"Key"}"#));
+
+        lib.delete(&[id]).unwrap();
+        let orphans: i64 = lib.conn.query_row("SELECT COUNT(*) FROM journal_entries", [], |r| r.get(0)).unwrap();
+        assert_eq!(orphans, 0);
+    }
+
+    #[test]
+    fn library_wide_notebook_skips_trashed_books() {
+        let mut lib = Library::open_in_memory().unwrap();
+        let dir = temp_dir("notebook");
+        let ids: Vec<i64> = lib
+            .add_paths(&[pdf(&dir, "a.pdf"), pdf(&dir, "b.pdf")])
+            .unwrap()
+            .added
+            .iter()
+            .map(|b| b.id)
+            .collect();
+        lib.save_annotation(ids[0], "l1", "from a", None, "yellow", 0.1).unwrap();
+        lib.save_annotation(ids[1], "l2", "from b", Some("note"), "pink", 0.5).unwrap();
+        lib.add_journal_entry(ids[0], "journal a", None, None).unwrap();
+        lib.add_journal_entry(ids[1], "journal b", Some("3"), Some(0.3)).unwrap();
+
+        assert_eq!(lib.all_annotations().unwrap().len(), 2);
+        assert_eq!(lib.all_journal().unwrap().len(), 2);
+
+        lib.trash(&ids[1..]).unwrap();
+        let notes = lib.all_annotations().unwrap();
+        assert_eq!(notes.iter().map(|n| n.text.as_str()).collect::<Vec<_>>(), ["from a"]);
+        assert_eq!(lib.all_journal().unwrap()[0].body, "journal a");
     }
 
     #[test]

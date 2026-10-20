@@ -43,6 +43,8 @@ export interface Highlight {
   location: string;
   /** Any CSS color. */
   color: string;
+  /** Shows a marker so highlights with a note stand out. */
+  note?: boolean;
 }
 
 export interface SearchResult {
@@ -55,7 +57,8 @@ export interface SearchResult {
 export type Theme = "light" | "sepia" | "dark" | "night-sepia";
 export type FontFamily = "original" | "serif" | "sans" | "mono";
 export type TextAlign = "original" | "left" | "justify";
-export type PageLayout = "single" | "double";
+/** Paginated with one or two pages, or one continuous scroll. */
+export type PageLayout = "single" | "double" | "scroll";
 export type PdfFit = "page" | "width";
 
 export interface ReaderSettings {

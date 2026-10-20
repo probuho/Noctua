@@ -5,6 +5,7 @@ import { t } from "../../i18n";
 import { confirmDialog, promptDialog, alertDialog } from "../dialogs";
 import { blobToThumbnail, h } from "../dom";
 import { openMenu, openMenuAt, type MenuItem } from "../menu";
+import { createNotebook, notebookCount } from "./notebook";
 import { openProperties } from "./properties";
 import {
   booksInView,
@@ -63,7 +64,7 @@ async function onFilesDropped(onHover: (over: boolean) => void, onDrop: (paths: 
   });
 }
 
-export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => void): Promise<void> {
+export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jumpTo?: string) => void): Promise<void> {
   const formats: FormatInfo[] = await api.supportedFormats();
   let books: Book[] = [];
   let categories: Category[] = [];
@@ -79,6 +80,8 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => v
   const status = h("p", { class: "status", role: "status" });
   const viewHeader = h("div", { class: "view-header" });
   const grid = h("section", { class: "book-grid" });
+  const notebook = createNotebook(onOpen);
+  let notebookTotal = 0;
   const selectionBar = h("footer", { class: "selection-bar", hidden: true });
   const dropOverlay = h("div", { class: "drop-overlay", hidden: true }, h("p", {}, t("dropHere")));
 
@@ -97,7 +100,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => v
   };
 
   const refresh = async () => {
-    [books, categories] = await Promise.all([api.listBooks(), api.listCategories()]);
+    [books, categories, notebookTotal] = await Promise.all([api.listBooks(), api.listCategories(), notebookCount()]);
     // Drop selections of books that left the current view.
     const ids = new Set(booksInView(books, view).map((b) => b.id));
     for (const id of selected) if (!ids.has(id)) selected.delete(id);
@@ -271,6 +274,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => v
           sidebarItem({ kind }, t(kind), count({ kind })),
         ),
       ),
+      h("ul", { class: "sidebar-notebook" }, sidebarItem({ kind: "notebook" }, t("notebook"), notebookTotal)),
       h(
         "div",
         { class: "sidebar-heading" },
@@ -414,6 +418,16 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => v
   };
 
   const drawGrid = () => {
+    // The notebook replaces the grid of books.
+    const showNotebook = view.kind === "notebook";
+    grid.hidden = showNotebook;
+    notebook.el.hidden = !showNotebook;
+    // Book search, sort and selection only apply to the grid.
+    root.querySelectorAll<HTMLElement>(".grid-only").forEach((el) => (el.hidden = showNotebook));
+    if (showNotebook) {
+      void notebook.load(books);
+      return;
+    }
     const list = visible();
     grid.replaceChildren(...list.map(bookCard));
     if (!list.length) {
@@ -488,6 +502,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => v
   const sortSelect = h(
     "select",
     {
+      class: "grid-only",
       "aria-label": t("sortBy"),
       title: t("sortBy"),
       onchange: (e: Event) => {
@@ -507,7 +522,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => v
     h("h1", {}, t("appName")),
     h("input", {
       type: "search",
-      class: "search",
+      class: "search grid-only",
       placeholder: t("searchLibrary"),
       "aria-label": t("searchLibrary"),
       oninput: (e: Event) => {
@@ -520,6 +535,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => v
     h(
       "button",
       {
+        class: "grid-only",
         onclick: () => {
           selecting = !selecting;
           if (!selecting) selected.clear();
@@ -537,7 +553,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book) => v
       "div",
       { class: "library" },
       header,
-      h("div", { class: "library-body" }, sidebar, h("main", { class: "library-main" }, viewHeader, banner, status, grid)),
+      h("div", { class: "library-body" }, sidebar, h("main", { class: "library-main" }, viewHeader, banner, status, grid, notebook.el)),
       selectionBar,
       dropOverlay,
     ),

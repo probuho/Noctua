@@ -33,6 +33,16 @@ export interface Annotation {
   updatedAt: number;
 }
 
+export interface JournalEntry {
+  id: number;
+  bookId: number;
+  body: string;
+  location: string | null;
+  progress: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Category {
   id: number;
   name: string;
@@ -101,6 +111,24 @@ export const api = {
   clearAnnotations: (bookId: number) => invoke<void>("clear_annotations", { bookId }),
   /** Only .html, .md and .txt paths are accepted. */
   saveExport: (path: string, contents: string) => invoke<void>("save_export", { path, contents }),
+
+  listJournal: (bookId: number) => invoke<JournalEntry[]>("list_journal", { bookId }),
+  addJournalEntry: (bookId: number, body: string, location: string | null, progress: number | null) =>
+    invoke<JournalEntry[]>("add_journal_entry", { bookId, body, location, progress }),
+  updateJournalEntry: (id: number, bookId: number, body: string) =>
+    invoke<JournalEntry[]>("update_journal_entry", { id, bookId, body }),
+  deleteJournalEntry: (id: number, bookId: number) => invoke<JournalEntry[]>("delete_journal_entry", { id, bookId }),
+
+  /** Library-wide notebook (books in the trash are left out). */
+  listAllAnnotations: () => invoke<Annotation[]>("list_all_annotations"),
+  listAllJournal: () => invoke<JournalEntry[]>("list_all_journal"),
+
+  /** App-wide settings stored in the library database (JSON values). */
+  getSetting: async <T>(key: string): Promise<T | null> => {
+    const raw = await invoke<string | null>("get_setting", { key });
+    return raw === null ? null : (JSON.parse(raw) as T);
+  },
+  setSetting: (key: string, value: unknown) => invoke<void>("set_setting", { key, value: JSON.stringify(value) }),
 
   listBookmarks: (bookId: number) => invoke<Bookmark[]>("list_bookmarks", { bookId }),
   addBookmark: (bookId: number, location: string, label: string, progress: number) =>

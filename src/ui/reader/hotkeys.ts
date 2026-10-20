@@ -10,6 +10,7 @@ export type Action =
   | "bookmark"
   | "contents"
   | "notes"
+  | "journal"
   | "larger"
   | "smaller"
   | "resetSize"
@@ -36,6 +37,7 @@ const BINDINGS: Binding[] = [
   { keys: ["Ctrl+b"], action: "bookmark", label: "keyBookmark" },
   { keys: ["Ctrl+t"], action: "contents", label: "keyContents" },
   { keys: ["n"], action: "notes", label: "keyNotes" },
+  { keys: ["j"], action: "journal", label: "keyJournal" },
   { keys: ["Ctrl+=", "Ctrl++"], action: "larger", label: "keySize" },
   { keys: ["Ctrl+-"], action: "smaller", label: "keySize" },
   { keys: ["Ctrl+0"], action: "resetSize", label: "keySizeReset" },
