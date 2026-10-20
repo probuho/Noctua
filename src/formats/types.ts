@@ -116,9 +116,24 @@ export interface ReaderSession {
   destroy(): void;
 }
 
+/** Asks the reader for a password; `retry` is true after a wrong one. Null = cancelled. */
+export type PasswordPrompt = (retry: boolean) => Promise<string | null>;
+
+/** Thrown by `open` when the reader cancels the password prompt. */
+export class PasswordCancelledError extends Error {
+  constructor() {
+    super("password cancelled");
+    this.name = "PasswordCancelledError";
+  }
+}
+
 export interface OpenOptions {
   location?: string | null;
   settings: ReaderSettings;
+  /** Called for protected books. Without it, protected books fail to open. */
+  requestPassword?: PasswordPrompt;
+  /** Accessible names for controls the plugin draws (plugins stay i18n-free). */
+  labels?: { page: (n: number) => string; web: (host: string) => string };
 }
 
 export interface FormatPlugin {

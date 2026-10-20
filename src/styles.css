@@ -202,6 +202,36 @@ button.icon { padding: 6px 10px; }
 .book-card:hover .card-menu, .card-menu:focus-visible { opacity: 1; }
 @media (hover: none) { .card-menu { opacity: 0.9; } }
 
+/* Security-sensitive modals: password prompt and external-link warning */
+.secure-modal { width: min(520px, calc(100vw - 32px)); }
+.secure-modal form { display: flex; flex-direction: column; gap: 10px; }
+.secure-modal p { margin: 0; }
+.modal-heading { display: flex; align-items: center; gap: 10px; }
+.modal-heading h2 { margin: 0; }
+.modal-heading .icon-svg { width: 24px; height: 24px; color: var(--accent); }
+.field-label { font-weight: 600; }
+.secure-modal input[type="password"], .secure-modal input[type="text"] { width: 100%; min-height: 40px; }
+.secure-modal input[aria-invalid="true"] { border-color: #c01c28; border-width: 2px; }
+.field-error { display: flex; gap: 8px; align-items: flex-start; color: #c01c28; font-weight: 600; }
+:root[data-theme="dark"] .field-error, :root[data-theme="night-sepia"] .field-error { color: #ff7b72; }
+.field-error .icon-svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+.link-domain { font-size: 1.15rem; font-weight: 700; overflow-wrap: anywhere; }
+.link-url {
+  font: 0.85rem ui-monospace, "Cascadia Mono", Consolas, monospace;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.link-warnings { list-style: none; margin: 0; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, #f5c518 18%, var(--surface)); border: 1px solid #b38600; }
+.link-warnings li { display: flex; gap: 8px; align-items: flex-start; }
+.link-warnings li + li { margin-top: 6px; }
+.link-warnings .icon-svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; }
+.secure-modal .modal-actions { flex-wrap: wrap; }
+.locked { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; margin-top: 15vh; }
+.locked .icon-svg { width: 40px; height: 40px; }
+
 /* Library-wide notes and journal */
 .sidebar .sidebar-notebook { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 .book-grid[hidden], .notebook[hidden], .grid-only[hidden] { display: none; }
@@ -605,6 +635,22 @@ kbd { font: 0.8rem ui-monospace, monospace; padding: 1px 6px; border: 1px solid 
 .pdf-view canvas { display: block; }
 .pdf-marks { position: absolute; inset: 0; pointer-events: none; }
 .pdf-highlight { position: absolute; opacity: 0.4; border-radius: 2px; }
+/* PDF links: invisible until hovered or focused, always keyboard reachable. */
+.pdf-links { position: absolute; inset: 0; pointer-events: none; }
+.pdf-link {
+  position: absolute;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.pdf-link:hover { background: color-mix(in srgb, #1a5fb4 14%, transparent); box-shadow: inset 0 -2px #1a5fb4; }
+.pdf-link:focus-visible { outline: 3px solid #1a5fb4; outline-offset: 2px; }
+
 .note-marker {
   position: absolute;
   width: 14px !important;

@@ -57,6 +57,8 @@ function keyName(e: KeyboardEvent): string {
 }
 
 export function actionFor(e: KeyboardEvent): Action | null {
+  // A modal dialog owns the keyboard (its Esc must not also close the book).
+  if (document.querySelector("dialog[open]")) return null;
   const target = e.target as HTMLElement | null;
   // Only text entry swallows shortcuts; sliders and buttons must not.
   const typing = target?.closest?.(

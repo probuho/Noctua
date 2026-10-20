@@ -3,6 +3,7 @@ name = "noctua-ebook-reader"
 version = "0.1.0"
 description = "Open source, cross-platform ebook reader"
 authors = ["Noctua contributors"]
+license = "AGPL-3.0-or-later"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

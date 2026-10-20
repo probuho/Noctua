@@ -106,7 +106,8 @@ export function openProperties(initial: Book): Promise<void> {
         h(
           "div",
           { class: "modal-actions" },
-          h("button", { value: "cancel", formnovalidate: true }, t("cancel")),
+          // type="button": Enter in a field must submit "Save", not "Cancel".
+          h("button", { type: "button", onclick: (e: Event) => (e.target as HTMLElement).closest("dialog")!.close("cancel") }, t("cancel")),
           h("button", { value: "save", class: "primary" }, t("save")),
         ),
       ),

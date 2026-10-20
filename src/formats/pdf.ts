@@ -2,7 +2,7 @@ import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { decodeLocation, encodeLocation, pageOfTarget, rectsInPage, textRanges, type PdfRect } from "./pdf-geometry";
-import type { FormatPlugin, Highlight, ReadingPosition, TextSelection, TocItem } from "./types";
+import { PasswordCancelledError, type FormatPlugin, type Highlight, type PasswordPrompt, type ReadingPosition, type TextSelection, type TocItem } from "./types";
 
 /** One rendered page. */
 interface PageView {
@@ -20,7 +20,7 @@ interface PageView {
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** Keep the loading task: in PDF.js 6 it is what owns the worker and gets destroyed. */
-async function loadPdf(file: File): Promise<{ pdf: PDFDocumentProxy; task: PDFDocumentLoadingTask }> {
+async function loadPdf(file: File, requestPassword?: PasswordPrompt): Promise<{ pdf: PDFDocumentProxy; task: PDFDocumentLoadingTask }> {
   // Copied to public/pdfjs by scripts/copy-pdfjs-assets.mjs. Without them,
   // scanned pages (JPEG 2000 / JBIG2), CJK text and non-embedded fonts break.
   const assets = `${import.meta.env.BASE_URL}pdfjs/`;
@@ -32,23 +32,43 @@ async function loadPdf(file: File): Promise<{ pdf: PDFDocumentProxy; task: PDFDo
     standardFontDataUrl: `${assets}standard_fonts/`,
     iccUrl: `${assets}iccs/`,
   });
-  return { pdf: await task.promise, task };
+  let cancelled = false;
+  task.onPassword = async (update: (password: string) => void, reason: number) => {
+    const password = requestPassword ? await requestPassword(reason === pdfjs.PasswordResponses.INCORRECT_PASSWORD) : null;
+    if (password === null) {
+      cancelled = true;
+      void task.destroy();
+    } else {
+      update(password);
+    }
+  };
+  try {
+    return { pdf: await task.promise, task };
+  } catch (err) {
+    if (cancelled) throw new PasswordCancelledError();
+    throw err;
+  }
 }
 
 type OutlineNode = Awaited<ReturnType<PDFDocumentProxy["getOutline"]>>[number];
 
+/** Page number (1-based) of an outline or link destination, or null if broken. */
+async function destinationPage(pdf: PDFDocumentProxy, dest: unknown): Promise<number | null> {
+  try {
+    const explicit = typeof dest === "string" ? await pdf.getDestination(dest) : (dest as unknown[] | null);
+    const ref = explicit?.[0];
+    if (ref && typeof ref === "object") return (await pdf.getPageIndex(ref as Parameters<PDFDocumentProxy["getPageIndex"]>[0])) + 1;
+    if (typeof ref === "number") return ref + 1;
+  } catch {
+    // Broken destinations are common in real PDFs; treat them as missing.
+  }
+  return null;
+}
+
 async function resolveOutline(pdf: PDFDocumentProxy, nodes: OutlineNode[] | null): Promise<TocItem[]> {
   const items: TocItem[] = [];
   for (const node of nodes ?? []) {
-    let page: number | null = null;
-    try {
-      const dest = typeof node.dest === "string" ? await pdf.getDestination(node.dest) : node.dest;
-      const ref = dest?.[0];
-      if (ref && typeof ref === "object") page = (await pdf.getPageIndex(ref)) + 1;
-      else if (typeof ref === "number") page = ref + 1;
-    } catch {
-      // Broken outline entries are common; skip them.
-    }
+    const page = await destinationPage(pdf, node.dest);
     const children = await resolveOutline(pdf, node.items);
     if (page !== null || children.length) {
       items.push({ label: node.title || "—", target: String(page ?? 1), children: children.length ? children : undefined });
@@ -86,8 +106,9 @@ export const pdfPlugin: FormatPlugin = {
     }
   },
 
-  async open(container, file, { location, settings }) {
-    const { pdf, task: loading } = await loadPdf(file);
+  async open(container, file, { location, settings, requestPassword, labels }) {
+    const linkLabels = labels ?? { page: (n: number) => `→ ${n}`, web: (host: string) => host };
+    const { pdf, task: loading } = await loadPdf(file, requestPassword);
     const toc = await resolveOutline(pdf, await pdf.getOutline());
     const total = pdf.numPages;
     // Continuous mode lays out every page with this size until it is rendered.
@@ -102,6 +123,7 @@ export const pdfPlugin: FormatPlugin = {
     const listeners: Array<(p: ReadingPosition) => void> = [];
     const selectListeners: Array<(s: TextSelection | null) => void> = [];
     const highlightListeners: Array<(location: string, rect: DOMRect) => void> = [];
+    const linkListeners: Array<(url: string) => void> = [];
     const history: number[] = [];
     const pageText = new Map<number, string>();
     /** Pages currently rendered, by page number. */
@@ -192,7 +214,10 @@ export const pdfPlugin: FormatPlugin = {
       marks.className = "pdf-marks";
       const textDiv = document.createElement("div");
       textDiv.className = "textLayer";
-      el.replaceChildren(canvas, marks, textDiv);
+      const links = document.createElement("div");
+      links.className = "pdf-links";
+      el.replaceChildren(canvas, marks, textDiv, links);
+      void addLinks(page, viewport, links);
 
       const task = page.render({
         canvas,
@@ -215,6 +240,56 @@ export const pdfPlugin: FormatPlugin = {
       );
       paintHighlights(view);
       return view;
+    };
+
+    /**
+     * Real buttons over the PDF's link areas: internal links jump (and "Back"
+     * returns), web links go through the app's security warning first.
+     */
+    const addLinks = async (page: PDFPageProxy, viewport: ReturnType<PDFPageProxy["getViewport"]>, layer: HTMLElement) => {
+      let annotations: Array<{ subtype?: string; rect: number[]; url?: string; unsafeUrl?: string; dest?: unknown }>;
+      try {
+        annotations = await page.getAnnotations();
+      } catch {
+        return;
+      }
+      for (const a of annotations) {
+        if (a.subtype !== "Link") continue;
+        const external = a.url ?? a.unsafeUrl;
+        const target = external ? null : await destinationPage(pdf, a.dest);
+        if (!external && target === null) continue;
+        const [x1, y1] = viewport.convertToViewportPoint(a.rect[0], a.rect[1]) as number[];
+        const [x2, y2] = viewport.convertToViewportPoint(a.rect[2], a.rect[3]) as number[];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = external ? "pdf-link external" : "pdf-link";
+        Object.assign(button.style, {
+          left: `${Math.min(x1, x2)}px`,
+          top: `${Math.min(y1, y2)}px`,
+          width: `${Math.abs(x2 - x1)}px`,
+          height: `${Math.abs(y2 - y1)}px`,
+        });
+        let label: string;
+        if (external) {
+          let host = external;
+          try {
+            host = new URL(external).hostname || external;
+          } catch {
+            // Keep the raw text; the warning dialog explains invalid links.
+          }
+          label = linkLabels.web(host);
+        } else {
+          label = linkLabels.page(target!);
+        }
+        button.setAttribute("aria-label", label);
+        button.title = external ?? label;
+        button.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (external) linkListeners.forEach((l) => l(external));
+          else void show(target!, { jump: true });
+        });
+        layer.append(button);
+      }
     };
 
     const dropView = (view: PageView) => {
@@ -446,8 +521,7 @@ export const pdfPlugin: FormatPlugin = {
         views.forEach(paintHighlights);
       },
       onHighlightClick: (l) => void highlightListeners.push(l),
-      // Link annotations inside PDFs are not rendered yet.
-      onExternalLink: () => {},
+      onExternalLink: (l) => void linkListeners.push(l),
       onRelocate: (l) => void listeners.push(l),
       destroy: () => {
         resize.disconnect();

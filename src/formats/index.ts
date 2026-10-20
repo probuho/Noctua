@@ -9,3 +9,4 @@ registerFormat(pdfPlugin);
 
 export * from "./registry";
 export type * from "./types";
+export { PasswordCancelledError } from "./types";

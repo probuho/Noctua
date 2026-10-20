@@ -1,11 +1,12 @@
 import { api, loadBookFile, type Book } from "../../api";
-import { getFormat, type PageLayout, type ReaderSession, type ReadingPosition } from "../../formats";
+import { getFormat, PasswordCancelledError, type PageLayout, type ReaderSession, type ReadingPosition } from "../../formats";
 import { t } from "../../i18n";
 import { confirmDialog } from "../dialogs";
 import { h } from "../dom";
 import { openExternal } from "../external";
 import { isFullscreen, setFullscreen, toggleFullscreen } from "../fullscreen";
 import { icon, setIcon, type IconName } from "../icons";
+import { externalLinkDialog, passwordDialog } from "../secure-dialogs";
 import { applyAppTheme, DEFAULT_SETTINGS, loadSettings, saveSettings, THEMES } from "../theme";
 import { createAnnotator, loadLabels, saveLabels } from "./annotations";
 import { actionFor, hotkeySheet, type Action } from "./hotkeys";
@@ -15,6 +16,12 @@ import { createSidePanel, PANEL_ID, PANEL_TABS, type PanelTab } from "./side-pan
 const SAVE_DELAY_MS = 800;
 const SLIDER_STEPS = 1000;
 const HELP_ID = "reader-help-panel";
+
+/**
+ * Passwords typed this session, so reopening a protected book does not ask
+ * again. Kept in memory only: never written to disk or the library.
+ */
+const sessionPasswords = new Map<number, string>();
 
 /** Toolbar button with an icon and a text label (hidden visually on narrow windows). */
 function toolButton(name: IconName, label: string, onclick: () => void, attrs: Record<string, string> = {}) {
@@ -57,10 +64,37 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   let session: ReaderSession;
   try {
     const file = await loadBookFile(book);
-    session = await getFormat(book.format).open(stage, file, { location: book.location, settings });
+    let typed: string | null = null;
+    const remembered = sessionPasswords.get(book.id);
+    session = await getFormat(book.format).open(stage, file, {
+      location: book.location,
+      settings,
+      labels: { page: (n) => t("goToPageLink", String(n)), web: (host) => t("webLink", host) },
+      requestPassword: async (retry) => {
+        // Try the remembered password once before asking.
+        if (!retry && remembered && typed === null) return (typed = remembered);
+        typed = await passwordDialog(book.title, retry && typed !== null);
+        return typed;
+      },
+    });
+    if (typed) sessionPasswords.set(book.id, typed);
     loading.remove();
   } catch (err) {
-    loading.textContent = t("openError", String(err));
+    if (err instanceof PasswordCancelledError) {
+      sessionPasswords.delete(book.id);
+      loading.replaceWith(
+        h(
+          "div",
+          { class: "empty locked" },
+          icon("lock"),
+          h("p", {}, t("passwordRequired")),
+          h("button", { class: "primary", onclick: () => void renderReader(root, book, onClose, jumpTo) }, t("unlock")),
+          h("button", { onclick: onClose }, t("back")),
+        ),
+      );
+    } else {
+      loading.textContent = t("openError", String(err));
+    }
     return;
   }
   stage.append(dim);
@@ -95,7 +129,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   const side = createSidePanel({ book, session, annotator, position: () => position });
 
   session.onExternalLink(async (url) => {
-    if (await confirmDialog(t("openExternalLink", url), t("open"))) await openExternal(url);
+    if (await externalLinkDialog(url)) await openExternal(url);
   });
 
   const help = h(

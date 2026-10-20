@@ -31,7 +31,8 @@ export function promptDialog(title: string, initial = ""): Promise<string | null
         h(
           "div",
           { class: "modal-actions" },
-          h("button", { value: "cancel", formnovalidate: true }, t("cancel")),
+          // type="button": Enter in the field must submit "OK", not "Cancel".
+          h("button", { type: "button", onclick: (e: Event) => (e.target as HTMLElement).closest("dialog")!.close("cancel") }, t("cancel")),
           h("button", { value: "ok", class: "primary" }, t("ok")),
         ),
       ),

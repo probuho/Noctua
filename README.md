@@ -115,6 +115,34 @@ otra medida que la sustituya.
 - Reutilizar código, recursos o textos de lectores propietarios. Este proyecto
   se diseña en sala limpia a partir de especificaciones públicas.
 
+## Licencia
+
+Noctua es software libre bajo la **GNU Affero General Public License v3.0 o
+posterior** (AGPL-3.0-or-later). El texto completo está en [LICENSE](LICENSE).
+
+En resumen: cualquiera puede usar, estudiar, modificar y redistribuir Noctua,
+incluso de forma comercial, **pero quien distribuya una versión (o la ofrezca
+como servicio en red) debe publicar su código fuente completo bajo la misma
+licencia**. Nadie puede cerrar el código ni quedarse con las mejoras de la
+comunidad.
+
+```
+Noctua - Ebook Reader
+Copyright (C) 2026 probuho y colaboradores de Noctua
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+```
+
+Todas las dependencias incluidas (MIT, Apache-2.0, ISC) son compatibles con la
+AGPL-3.0.
+
 ## Licencias de terceros
 
 | Componente | Licencia |

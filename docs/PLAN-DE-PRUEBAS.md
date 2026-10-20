@@ -76,8 +76,8 @@ Para comprobar que nada importante se ha roto tras un cambio:
   *Esperado:* al arrastrar aparece el recuadro «Suelta aquí libros o carpetas»; al soltar se añaden.
 - [ ] **A6** Arrastrar una carpeta a la ventana.
   *Esperado:* igual que A4.
-- [ ] **A7** Añadir un PDF protegido con contraseña.
-  *Esperado:* se añade pero sin portada ni título interno (usa el nombre del archivo). Al abrirlo muestra un mensaje de error en lugar de bloquearse. *(Pedir la contraseña aún no está implementado.)*
+- [ ] **A7** Añadir un PDF protegido con contraseña (hay uno de ejemplo: `dev/fixtures/sample-protected.pdf`, contraseña `noctua`).
+  *Esperado:* se añade sin portada y con el nombre del archivo como título (no se puede leer sin la contraseña).
 
 ### Vistas y contadores (barra lateral)
 
@@ -229,6 +229,15 @@ el selector de vista (**Una página · Dos páginas · Continuo**), **Ajustes**,
 - [ ] **D8** Con cualquier tema (Sepia, Oscuro, Sepia nocturno) las páginas del PDF conservan sus colores originales; solo cambia la interfaz alrededor. **Atenuación** oscurece la página si molesta el brillo.
 - [ ] **D9** Buscar una palabra con el panel abierto.
   *Esperado:* las coincidencias se marcan con un recuadro rojo sobre la página (en las dos páginas si la vista es doble). Al cerrar el panel desaparecen.
+- [ ] **D11** Abrir un PDF protegido: aparece «Libro protegido» con el cursor en el campo **Contraseña**. Se puede pegar la contraseña y marcar **Mostrar contraseña**.
+- [ ] **D12** Escribir una contraseña incorrecta y pulsar `Enter`.
+  *Esperado:* el diálogo sigue abierto con el aviso «La contraseña no es correcta…» (icono + texto, no solo color).
+- [ ] **D13** Escribir la correcta y pulsar `Enter` → se abre el libro. Volver a la biblioteca y abrirlo otra vez → no la vuelve a pedir mientras la app siga abierta. Tras cerrar la app, sí la pide (nunca se guarda en disco).
+- [ ] **D14** Pulsar **Cancelar** o `Esc` en la contraseña → pantalla «Hace falta la contraseña…» con **Abrir libro** (reintentar) y **Biblioteca**. El `Esc` no cierra el libro de golpe.
+- [ ] **D15** En `sample.pdf`, página 1: pulsar «Ir a la pagina 3 (enlace interno)» → salta a la página 3; **Volver** regresa a la 1.
+- [ ] **D16** Pulsar «Visitar example.org (enlace externo)» → aviso «Vas a salir de Noctua» con el dominio en grande, la dirección completa y el foco en **Cancelar**. **Cancelar** o `Esc` no abre nada; **Abrir en el navegador** la abre en el navegador del sistema; **Copiar enlace** la copia.
+- [ ] **D17** Los enlaces se pueden alcanzar con `Tab` y activar con `Enter`; al pasar el ratón se ven subrayados.
+- [ ] **D18** Enlaces de riesgo (si tienes un PDF con ellos): `http://` muestra «La conexión no es segura»; enlaces con usuario/contraseña, a una IP o con dominio raro muestran su aviso; `javascript:` y otros tipos no web se bloquean (solo se puede copiar).
 - [ ] **D10** Seleccionar texto con el ratón en un PDF con texto (no escaneado) y copiarlo con `Ctrl+C`.
   *Esperado:* se pega el texto seleccionado.
 
@@ -368,7 +377,6 @@ cambios no se guardan.
 
 ## Limitaciones conocidas
 
-- En PDF los enlaces internos y externos del documento aún no son clicables.
 - Los PDF escaneados no tienen texto seleccionable (haría falta OCR).
 - Los PDF con contraseña no piden la contraseña.
 - Los libros movidos o renombrados en el disco no se relocalizan.

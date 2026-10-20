@@ -8,6 +8,8 @@ const FIXTURES: Array<[string, string]> = [
   ["sample.epub", "/books/sample.epub"],
   ["sample.pdf", "/books/sample.pdf"],
   ["sample.epub", "/books/novelas/otra-copia.epub"],
+  // Password: noctua
+  ["sample-protected.pdf", "/books/protegido.pdf"],
 ];
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -243,7 +245,10 @@ mockIPC((cmd, payload) => {
 const { getFormat } = await import("../src/formats");
 const { blobToThumbnail } = await import("../src/ui/dom");
 for (const book of books) {
-  const meta = await getFormat(book.format).extractMetadata(new File([files.get(book.id)!], book.path));
+  // Protected books cannot be read without a password; keep the file name, like the app.
+  const meta = await getFormat(book.format)
+    .extractMetadata(new File([files.get(book.id)!], book.path))
+    .catch(() => ({ title: undefined, author: undefined, cover: null }));
   Object.assign(book, { title: meta.title ?? book.title, author: meta.author ?? null });
   if (meta.cover) {
     book.cover = await blobToThumbnail(meta.cover);
