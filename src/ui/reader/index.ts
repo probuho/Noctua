@@ -100,6 +100,42 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   }
   stage.append(dim);
 
+  // Mouse paging: click the side margins or use the wheel (paged views only;
+  // the continuous view scrolls natively).
+  const zone = (side: "prev" | "next") =>
+    h(
+      "button",
+      {
+        class: `page-zone page-zone-${side}`,
+        "aria-label": side === "prev" ? t("prev") : t("next"),
+        title: side === "prev" ? t("prev") : t("next"),
+        tabindex: -1, // keyboard users have arrows and the footer buttons
+        onclick: () => void (side === "prev" ? session.prev() : session.next()),
+      },
+      icon(side),
+    );
+  stage.append(zone("prev"), zone("next"));
+  let wheelAt = 0;
+  stage.addEventListener(
+    "wheel",
+    (e) => {
+      if (settings.layout === "scroll" || Math.abs(e.deltaY) < 4) return;
+      const pdfScroll = (e.target as HTMLElement).closest?.(".pdf-view");
+      // Let a zoomed PDF page scroll until it reaches its edge.
+      if (pdfScroll && pdfScroll.scrollHeight > pdfScroll.clientHeight + 2) {
+        const atEnd = pdfScroll.scrollTop + pdfScroll.clientHeight >= pdfScroll.scrollHeight - 2;
+        const atStart = pdfScroll.scrollTop <= 0;
+        if ((e.deltaY > 0 && !atEnd) || (e.deltaY < 0 && !atStart)) return;
+      }
+      e.preventDefault();
+      const now = Date.now();
+      if (now - wheelAt < 350) return;
+      wheelAt = now;
+      void (e.deltaY > 0 ? session.next() : session.prev());
+    },
+    { passive: false },
+  );
+
   // --- State ----------------------------------------------------------------
   let position: ReadingPosition | null = null;
   let pending: ReadingPosition | null = null;
@@ -114,6 +150,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   };
 
   const updateSettings = () => {
+    stage.dataset.layout = settings.layout;
     saveSettings(settings);
     applyAppTheme(settings.theme);
     dim.style.opacity = String(settings.dimming);

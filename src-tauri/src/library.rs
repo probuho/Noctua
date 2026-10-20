@@ -216,6 +216,12 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|v| !v.is_empty())
 }
 
+/// Metadata read from files is often junk like "()" or "-": keep only text
+/// with at least one letter or digit.
+fn meaningful(value: Option<&str>) -> Option<&str> {
+    non_empty(value).filter(|v| v.chars().any(char::is_alphanumeric))
+}
+
 impl Library {
     pub fn open(path: &Path) -> Result<Self> {
         Self::init(Connection::open(path)?)
@@ -235,7 +241,9 @@ impl Library {
             tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))?;
         }
         tx.commit()?;
-        Ok(Self { conn })
+        let lib = Self { conn };
+        lib.repair_junk_metadata()?;
+        Ok(lib)
     }
 
     /// Runs `sql` once per id inside a single transaction.
@@ -319,12 +327,30 @@ impl Library {
         Ok(result)
     }
 
+    /// Books added before junk filtering existed may show "()" as title or
+    /// author: fall back to the file name and drop the author.
+    fn repair_junk_metadata(&self) -> Result<()> {
+        let mut stmt = self.conn.prepare("SELECT id, path, title, author FROM books")?;
+        let rows: Vec<(i64, String, String, Option<String>)> =
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<rusqlite::Result<_>>()?;
+        for (id, path, title, author) in rows {
+            if meaningful(Some(&title)).is_none() {
+                let stem = Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled");
+                self.conn.execute("UPDATE books SET title = ?2 WHERE id = ?1", params![id, stem])?;
+            }
+            if author.is_some() && meaningful(author.as_deref()).is_none() {
+                self.conn.execute("UPDATE books SET author = NULL WHERE id = ?1", [id])?;
+            }
+        }
+        Ok(())
+    }
+
     /// Metadata read from the file itself; the cover is also kept as the original.
     pub fn set_extracted_metadata(&self, id: i64, title: Option<&str>, author: Option<&str>, cover: Option<&str>) -> Result<()> {
         self.conn.execute(
             "UPDATE books SET title = COALESCE(?2, title), author = COALESCE(?3, author),
              cover = COALESCE(?4, cover), original_cover = COALESCE(?4, original_cover) WHERE id = ?1",
-            params![id, non_empty(title), non_empty(author), cover],
+            params![id, meaningful(title), meaningful(author), cover],
         )?;
         Ok(())
     }
@@ -878,6 +904,24 @@ mod tests {
         let notes = lib.all_annotations().unwrap();
         assert_eq!(notes.iter().map(|n| n.text.as_str()).collect::<Vec<_>>(), ["from a"]);
         assert_eq!(lib.all_journal().unwrap()[0].body, "journal a");
+    }
+
+    #[test]
+    fn junk_metadata_is_ignored_and_repaired() {
+        let dir = temp_dir("junk");
+        let db = dir.join("library.db");
+        let path = pdf(&dir, "Y colorin colorado.pdf");
+        {
+            let mut lib = Library::open(&db).unwrap();
+            let id = lib.add_paths(&[path]).unwrap().added[0].id;
+            lib.set_extracted_metadata(id, Some("()"), Some("(), ()"), None).unwrap();
+            let book = lib.get(id).unwrap();
+            assert_eq!((book.title.as_str(), book.author), ("Y colorin colorado", None));
+            // Simulate a library written before the filter existed.
+            lib.conn.execute("UPDATE books SET title = '()', author = '-'", []).unwrap();
+        }
+        let book = &Library::open(&db).unwrap().list().unwrap()[0];
+        assert_eq!((book.title.as_str(), book.author.as_deref()), ("Y colorin colorado", None));
     }
 
     #[test]

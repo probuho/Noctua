@@ -83,6 +83,10 @@ button.icon { padding: 6px 10px; }
 }
 .toolbar h1 { font-size: 1.1rem; margin: 0 auto 0 0; white-space: nowrap; }
 .search { min-width: 0; flex: 0 1 260px; }
+.search-box { display: flex; flex: 0 1 280px; min-width: 0; }
+.search-box .search { flex: 1; }
+.search-box[hidden] { display: none; }
+.library-toolbar .tool-button.primary .icon-svg { color: inherit; }
 
 .library { display: flex; flex-direction: column; height: 100%; position: relative; }
 .library-body { flex: 1; display: flex; min-height: 0; }
@@ -415,6 +419,31 @@ input.narrow { width: 5.5em; }
 .segment input:checked + label { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); position: relative; z-index: 1; }
 .segment input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; position: relative; z-index: 2; }
 .swatch { width: 18px; height: 18px; border-radius: 50%; background: var(--swatch); border: 1px solid var(--control); }
+
+/* Click zones on the page margins to turn pages with the mouse. */
+.page-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: clamp(36px, 7%, 96px);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.page-zone-prev { left: 0; }
+.page-zone-next { right: 0; }
+.page-zone:hover { opacity: 0.55; background: linear-gradient(to var(--dir, right), color-mix(in srgb, var(--fg) 8%, transparent), transparent); }
+.page-zone-next:hover { --dir: left; }
+.reader-stage[data-layout="scroll"] .page-zone { display: none; }
+@media (prefers-reduced-motion: reduce) { .page-zone { transition: none; } }
 
 /* Activity rail: the side panels, always labelled. */
 .activity-rail {

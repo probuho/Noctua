@@ -425,7 +425,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
     grid.hidden = showNotebook;
     notebook.el.hidden = !showNotebook;
     // Book search, sort and selection only apply to the grid.
-    root.querySelectorAll<HTMLElement>(".grid-only").forEach((el) => (el.hidden = showNotebook));
+    root.querySelectorAll<HTMLElement>(".grid-only").forEach((el) => (el.hidden = showNotebook || (el.classList.contains("search-box") && !query)));
     if (showNotebook) {
       void notebook.load(books);
       return;
@@ -518,21 +518,63 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
     ),
   );
 
+  // Search stays one click away; adding books and support live in the menu.
+  const searchInput = h("input", {
+    type: "search",
+    class: "search",
+    placeholder: t("searchLibrary"),
+    "aria-label": t("searchLibrary"),
+    oninput: (e: Event) => {
+      query = (e.target as HTMLInputElement).value;
+      drawBanner();
+      drawGrid();
+    },
+  });
+  const searchBox = h("div", { class: "search-box grid-only", hidden: true }, searchInput);
+  const searchToggle = h(
+    "button",
+    {
+      class: "tool-button grid-only",
+      "aria-expanded": "false",
+      title: t("searchLibrary"),
+      onclick: () => {
+        const open = searchBox.hidden;
+        searchBox.hidden = !open;
+        searchToggle.setAttribute("aria-expanded", String(open));
+        if (open) searchInput.focus();
+        else if (query) {
+          searchInput.value = query = "";
+          drawBanner();
+          drawGrid();
+        }
+      },
+    },
+    icon("search"),
+    h("span", { class: "tool-label" }, t("search")),
+  );
+  const menuButton = h(
+    "button",
+    {
+      class: "tool-button primary",
+      "aria-haspopup": "menu",
+      onclick: (e: Event) =>
+        openMenuAt(e.currentTarget as HTMLElement, [
+          { label: t("addBooks"), action: () => pickFiles() },
+          { label: t("addFolder"), action: () => pickFolder() },
+          "separator",
+          { label: `♥ ${t("supportTitle")}`, action: () => openSupportDialog() },
+        ]),
+    },
+    icon("contents"),
+    h("span", { class: "tool-label" }, t("menu")),
+  );
+
   const header = h(
     "header",
-    { class: "toolbar" },
+    { class: "toolbar library-toolbar" },
     h("h1", {}, t("appName")),
-    h("input", {
-      type: "search",
-      class: "search grid-only",
-      placeholder: t("searchLibrary"),
-      "aria-label": t("searchLibrary"),
-      oninput: (e: Event) => {
-        query = (e.target as HTMLInputElement).value;
-        drawBanner();
-        drawGrid();
-      },
-    }),
+    searchBox,
+    searchToggle,
     sortSelect,
     h(
       "button",
@@ -546,9 +588,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
       },
       t("select"),
     ),
-    h("button", { class: "support-button", onclick: () => openSupportDialog() }, icon("heart"), h("span", {}, t("support"))),
-    h("button", { onclick: () => void pickFolder() }, t("addFolder")),
-    h("button", { class: "primary", onclick: () => void pickFiles() }, t("addBooks")),
+    menuButton,
   );
 
   root.replaceChildren(
