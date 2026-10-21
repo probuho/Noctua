@@ -1,16 +1,19 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, loadBookFile, type AddResult, type Book, type Category, type FormatInfo } from "../../api";
-import { getFormat } from "../../formats";
+import { api, type Book, type Category, type FormatInfo } from "../../api";
+
 import { t } from "../../i18n";
 import { confirmDialog, deleteBooksDialog, promptDialog, alertDialog } from "../dialogs";
-import { blobToThumbnail, h } from "../dom";
+import { h } from "../dom";
 import { openMenu, openMenuAt, type MenuItem } from "../menu";
-import { createNotebook, notebookCount } from "./notebook";
 import { openProperties } from "./properties";
 import { icon } from "../icons";
-import { openSupportDialog } from "../support-dialog";
+import { supportCard } from "../support-dialog";
+import { focusSearchOnCtrlF, searchBox as searchField, viewToggle } from "../notes-page";
+import type { IconName } from "../icons";
+import { importWithProgress } from "../import-progress";
 import {
   booksInView,
+  categoryColor,
   continueCandidate,
   matchesQuery,
   parseViewKey,
@@ -27,6 +30,7 @@ const SIDEBAR_KEY = "library-sidebar";
 /** Below this width the sidebar is a drawer over the books. */
 const NARROW = window.matchMedia("(max-width: 900px)");
 const SORT_KEY = "library-sort";
+const LAYOUT_KEY = "library-layout";
 
 function stored(key: string): string | null {
   try {
@@ -44,15 +48,11 @@ function store(key: string, value: string): void {
   }
 }
 
-/** Reads title, author and cover through the format plugin and stores them. */
-async function enrichMetadata(book: Book): Promise<void> {
-  try {
-    const meta = await getFormat(book.format).extractMetadata(await loadBookFile(book));
-    const cover = meta.cover ? await blobToThumbnail(meta.cover) : undefined;
-    await api.setExtractedMetadata(book.id, { title: meta.title, author: meta.author, cover });
-  } catch (err) {
-    console.warn(`Metadata extraction failed for ${book.path}`, err);
-  }
+/** Stable hue per title so books without a cover get different colors. */
+function coverHue(title: string): number {
+  let hash = 0;
+  for (const ch of title) hash = (hash * 31 + ch.codePointAt(0)!) >>> 0;
+  return [18, 210, 140, 340, 230, 35, 28, 200, 0, 150, 270, 45][hash % 12];
 }
 
 /** Listens for files dropped on the window. Returns an unsubscribe function. */
@@ -68,11 +68,14 @@ async function onFilesDropped(onHover: (over: boolean) => void, onDrop: (paths: 
   });
 }
 
-export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jumpTo?: string) => void): Promise<void> {
+export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jumpTo?: string) => void, initialView?: string): Promise<void> {
   const formats: FormatInfo[] = await api.supportedFormats();
   let books: Book[] = [];
   let categories: Category[] = [];
+  if (initialView) store(VIEW_KEY, initialView);
   let view: View = parseViewKey(stored(VIEW_KEY));
+  if (view.kind === "notebook") view = { kind: "all" };
+  let layout: "grid" | "list" = stored(LAYOUT_KEY) === "list" ? "list" : "grid";
   let sort: SortKey = (SORT_KEYS as string[]).includes(stored(SORT_KEY) ?? "") ? (stored(SORT_KEY) as SortKey) : "recent";
   let query = "";
   let selecting = false;
@@ -80,12 +83,10 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
   const selected = new Set<number>();
 
   const sidebar = h("nav", { class: "sidebar", id: "library-sidebar", "aria-label": t("categories") });
-  const banner = h("div", { class: "continue" });
+  const banner = h("section", { class: "continue-card", "aria-label": t("continueReading") });
   const status = h("p", { class: "status", role: "status" });
   const viewHeader = h("div", { class: "view-header" });
   const grid = h("section", { class: "book-grid" });
-  const notebook = createNotebook(onOpen);
-  let notebookTotal = 0;
   const selectionBar = h("footer", { class: "selection-bar", hidden: true });
   const dropOverlay = h("div", { class: "drop-overlay", hidden: true }, h("p", {}, t("dropHere")));
 
@@ -104,7 +105,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
   };
 
   const refresh = async () => {
-    [books, categories, notebookTotal] = await Promise.all([api.listBooks(), api.listCategories(), notebookCount()]);
+    [books, categories] = await Promise.all([api.listBooks(), api.listCategories()]);
     // Drop selections of books that left the current view.
     const ids = new Set(booksInView(books, view).map((b) => b.id));
     for (const id of selected) if (!ids.has(id)) selected.delete(id);
@@ -133,25 +134,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
   };
 
   const addPaths = async (paths: string[]) => {
-    let result: AddResult;
-    try {
-      result = await api.addBooks(paths);
-    } catch (err) {
-      return alertDialog(String(err));
-    }
-    const notes = [t("booksAdded", String(result.added.length))];
-    if (result.duplicates.length) notes.push(t("duplicates", String(result.duplicates.length)));
-    if (result.unsupported.length) notes.push(t("unsupported", result.unsupported.join(", ")));
-    status.textContent = notes.join(" · ");
-    await refresh();
-    for (const [i, book] of result.added.entries()) {
-      status.textContent = `${notes.join(" · ")} · ${i + 1}/${result.added.length}`;
-      await enrichMetadata(book);
-    }
-    if (result.added.length) {
-      status.textContent = notes.join(" · ");
-      await refresh();
-    }
+    await importWithProgress(paths, refresh);
   };
 
   const pickFiles = async () => {
@@ -262,37 +245,55 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
 
   // --- Rendering -------------------------------------------------------------------
 
-  const sidebarItem = (v: View, label: string, count: number, extra?: HTMLElement) =>
+  /** Sidebar row from the design: icon (or category dot), label and count. */
+  const sidebarItem = (v: View, label: string, count: number, lead: IconName | { dot: string }, extra?: HTMLElement) =>
     h(
       "li",
       { class: "sidebar-item" },
       h(
         "button",
         { "aria-current": sameView(v, view) ? "page" : undefined, onclick: () => setView(v) },
+        typeof lead === "string" ? icon(lead) : h("span", { class: "dot", style: `background:${lead.dot}` }),
         h("span", { class: "label" }, label),
         h("span", { class: "count" }, String(count)),
       ),
       extra,
     );
 
+  const VIEW_ICONS: Array<[View["kind"], IconName]> = [
+    ["all", "library"],
+    ["recent", "history"],
+    ["favorites", "star"],
+    ["read", "circle-check"],
+    ["uncategorized", "inbox"],
+    ["trash", "trash-2"],
+  ];
+
   const drawSidebar = () => {
     const count = (v: View) => booksInView(books, v).length;
     const usedFormats = formats.filter((f) => books.some((b) => b.format === f.id && b.deletedAt === null));
     sidebar.replaceChildren(
       h(
-        "ul",
-        {},
-        ...(["all", "recent", "favorites", "read", "uncategorized"] as const).map((kind) =>
-          sidebarItem({ kind }, t(kind), count({ kind })),
-        ),
+        "button",
+        {
+          type: "button",
+          class: "add-books",
+          "aria-haspopup": "menu",
+          onclick: (e: Event) =>
+            openMenuAt(e.currentTarget as HTMLElement, [
+              { label: t("addFiles"), action: () => pickFiles() },
+              { label: t("addFolder"), action: () => pickFolder() },
+            ]),
+        },
+        icon("plus"),
+        h("span", {}, t("addBooks")),
       ),
-      h("ul", { class: "sidebar-notebook" }, sidebarItem({ kind: "notebook" }, t("notebook"), notebookTotal)),
       h(
-        "div",
-        { class: "sidebar-heading" },
-        h("span", {}, t("categories")),
-        h("button", { class: "icon", title: t("newCategory"), "aria-label": t("newCategory"), onclick: () => newCategory() }, "+"),
+        "ul",
+        { class: "side-views" },
+        ...VIEW_ICONS.map(([kind, ic]) => sidebarItem({ kind } as View, t(kind), count({ kind } as View), ic)),
       ),
+      h("div", { class: "sidebar-heading" }, h("span", {}, t("categories"))),
       h(
         "ul",
         {},
@@ -301,6 +302,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
             { kind: "category", id: c.id },
             c.name,
             count({ kind: "category", id: c.id }),
+            { dot: categoryColor(c.id) },
             h(
               "button",
               {
@@ -328,15 +330,16 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
             ),
           ),
         ),
+        h("li", { class: "sidebar-item" }, h("button", { onclick: () => newCategory() }, icon("plus"), h("span", { class: "label" }, t("newCategory")))),
       ),
       // Formats only help once the library mixes more than one.
       ...(usedFormats.length > 1
         ? [
             h("div", { class: "sidebar-heading" }, h("span", {}, t("formats"))),
-            h("ul", {}, ...usedFormats.map((f) => sidebarItem({ kind: "format", id: f.id }, f.name, count({ kind: "format", id: f.id })))),
+            h("ul", {}, ...usedFormats.map((f) => sidebarItem({ kind: "format", id: f.id }, f.name, count({ kind: "format", id: f.id }), f.id === "pdf" ? "file-text" : "book-text"))),
           ]
         : []),
-      h("ul", { class: "sidebar-bottom" }, sidebarItem({ kind: "trash" }, t("trash"), count({ kind: "trash" }))),
+      h("div", { class: "side-bottom" }, supportCard()),
     );
   };
 
@@ -347,7 +350,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
       ? h("img", { class: "cover", src: book.cover, alt: "", loading: "lazy" })
       : h(
           "div",
-          { class: "cover placeholder", "aria-hidden": "true" },
+          { class: "cover placeholder", "aria-hidden": "true", style: `--cover-hue:${coverHue(book.title)}` },
           h("span", { class: "ph-title" }, book.title),
           book.author ? h("span", { class: "ph-author" }, book.author) : null,
           h("span", { class: "ph-format" }, book.format.toUpperCase()),
@@ -379,8 +382,13 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
         h("span", { class: "book-author" }, book.author ?? t("unknownAuthor")),
         h(
           "span",
-          { class: "progress", role: "progressbar", "aria-valuenow": Math.round(book.progress * 100) },
-          h("span", { style: `width:${(book.progress * 100).toFixed(1)}%` }),
+          { class: "book-state" },
+          h("span", { class: "book-format" }, book.format.toUpperCase()),
+          book.readAt !== null
+            ? h("span", { class: "state-read" }, `· ${t("stateRead")}`)
+            : book.progress > 0
+              ? h("span", {}, `· ${Math.round(book.progress * 100)} %`)
+              : h("span", {}, `· ${t("stateNew")}`),
         ),
       ),
       h(
@@ -401,52 +409,52 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
     return card;
   };
 
+  const titleEl = h("h1", { class: "lib-title" });
+  const subtitleEl = h("p", { class: "lib-sub" });
   const drawViewHeader = () => {
+    const inView = booksInView(books, view);
+    titleEl.textContent = view.kind === "all" ? t("allBooksTitle") : viewLabel(view);
+    subtitleEl.textContent = t("libSubtitle", String(inView.length), String(inView.filter((b) => b.progress > 0 && b.readAt === null).length));
     const actions: HTMLElement[] = [];
-    if (view.kind === "trash" && booksInView(books, view).length) {
-      const ids = booksInView(books, view).map((b) => b.id);
+    if (view.kind === "trash" && inView.length) {
+      const ids = inView.map((b) => b.id);
       actions.push(
-        h("button", { onclick: () => run(() => api.restoreBooks(ids)) }, t("restoreAll")),
-        h(
-          "button",
-          {
-            class: "danger",
-            onclick: () => deleteForever("trash"),
-          },
-          t("emptyTrash"),
-        ),
+        h("button", { class: "btn-outline", onclick: () => run(() => api.restoreBooks(ids)) }, t("restoreAll")),
+        h("button", { class: "btn-outline danger", onclick: () => deleteForever("trash") }, t("emptyTrash")),
       );
     }
-    viewHeader.replaceChildren(h("h2", {}, viewLabel(view)), h("div", { class: "view-actions" }, ...actions));
+    viewHeader.hidden = !actions.length;
+    viewHeader.replaceChildren(h("div", { class: "view-actions" }, ...actions));
   };
 
   const drawBanner = () => {
     const book = view.kind === "all" && !query ? continueCandidate(books) : null;
     banner.hidden = !book;
-    if (book) {
-      banner.replaceChildren(
+    if (!book) return;
+    const pct = Math.round(book.progress * 100);
+    banner.replaceChildren(
+      book.cover
+        ? h("img", { class: "cc-cover", src: book.cover, alt: "" })
+        : h("div", { class: "cc-cover placeholder", "aria-hidden": "true" }, h("span", { class: "ph-title" }, book.title)),
+      h(
+        "div",
+        { class: "cc-info" },
+        h("p", { class: "cc-eyebrow" }, t("continueReading")),
+        h("p", { class: "cc-title" }, book.title),
+        h("p", { class: "cc-detail" }, [book.author, book.format.toUpperCase()].filter(Boolean).join(" · ")),
         h(
-          "button",
-          { class: "continue-button", onclick: () => onOpen(book) },
-          h("span", { class: "muted" }, t("continueReading")),
-          h("strong", {}, book.title),
-          h("span", { class: "muted" }, `${Math.round(book.progress * 100)}%`),
+          "div",
+          { class: "cc-progress" },
+          h("span", { class: "cc-track", role: "progressbar", "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": t("progress") }, h("span", { style: `width:${pct}%` })),
+          h("span", { class: "cc-pct" }, `${pct} %`),
         ),
-      );
-    }
+      ),
+      h("button", { type: "button", class: "btn-primary", onclick: () => onOpen(book) }, h("span", {}, t("continue")), icon("arrow-right")),
+    );
   };
 
   const drawGrid = () => {
-    // The notebook replaces the grid of books.
-    const showNotebook = view.kind === "notebook";
-    grid.hidden = showNotebook;
-    notebook.el.hidden = !showNotebook;
-    // Book search, sort and selection only apply to the grid.
-    root.querySelectorAll<HTMLElement>(".grid-only").forEach((el) => (el.hidden = showNotebook || (el.classList.contains("search-box") && !query)));
-    if (showNotebook) {
-      void notebook.load(books);
-      return;
-    }
+    grid.dataset.layout = layout;
     const list = visible();
     grid.replaceChildren(...list.map(bookCard));
     if (!list.length) {
@@ -522,7 +530,6 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
   const sortSelect = h(
     "select",
     {
-      class: "grid-only",
       "aria-label": t("sortBy"),
       title: t("sortBy"),
       onchange: (e: Event) => {
@@ -535,11 +542,10 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
       h("option", { value: key, selected: key === sort }, t(`sort${key[0].toUpperCase()}${key.slice(1)}` as Parameters<typeof t>[0])),
     ),
   );
+  const sortField = h("label", { class: "sort-field" }, icon("arrow-down-up"), sortSelect);
 
-  // Search stays one click away; adding books and support live in the menu.
   const searchInput = h("input", {
     type: "search",
-    class: "search",
     placeholder: t("searchLibrary"),
     "aria-label": t("searchLibrary"),
     oninput: (e: Event) => {
@@ -547,47 +553,14 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
       drawBanner();
       drawGrid();
     },
-  });
-  const searchBox = h("div", { class: "search-box grid-only", hidden: true }, searchInput);
-  const searchToggle = h(
-    "button",
-    {
-      class: "tool-button grid-only",
-      "aria-expanded": "false",
-      title: t("searchLibrary"),
-      onclick: () => {
-        const open = searchBox.hidden;
-        searchBox.hidden = !open;
-        searchToggle.setAttribute("aria-expanded", String(open));
-        if (open) searchInput.focus();
-        else if (query) {
-          searchInput.value = query = "";
-          drawBanner();
-          drawGrid();
-        }
-      },
-    },
-    icon("search"),
-    h("span", { class: "tool-label" }, t("search")),
-  );
-  const menuButton = h(
-    "button",
-    {
-      class: "tool-button primary",
-      "aria-haspopup": "menu",
-      onclick: (e: Event) =>
-        openMenuAt(e.currentTarget as HTMLElement, [
-          { label: t("addBooks"), action: () => pickFiles() },
-          { label: t("addFolder"), action: () => pickFolder() },
-          "separator",
-          { label: `♥ ${t("supportTitle")}`, action: () => openSupportDialog() },
-        ]),
-    },
-    icon("contents"),
-    h("span", { class: "tool-label" }, t("menu")),
-  );
+  }) as HTMLInputElement;
+  const layoutSwitch = viewToggle((l) => {
+    layout = l;
+    store(LAYOUT_KEY, l);
+    drawGrid();
+  }, layout);
 
-  const selectButton = h("button", { class: "tool-button grid-only select-toggle", "aria-pressed": "false", onclick: () => setSelecting(!selecting) });
+  const selectButton = h("button", { class: "btn-outline select-toggle", "aria-pressed": "false", onclick: () => setSelecting(!selecting) });
   function setSelecting(on: boolean) {
     selecting = on;
     if (!on) selected.clear();
@@ -596,7 +569,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
   function drawSelectButton() {
     const on = selecting || selected.size > 0;
     selectButton.setAttribute("aria-pressed", String(on));
-    selectButton.replaceChildren(icon(on ? "check" : "select"), h("span", { class: "tool-label" }, on ? t("doneSelecting") : t("select")));
+    selectButton.replaceChildren(icon(on ? "check" : "select"), h("span", { class: "btn-label" }, on ? t("doneSelecting") : t("select")));
   }
 
   // --- Sidebar: collapsible; a drawer over the books on narrow windows ---
@@ -604,7 +577,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
   let narrowOpen = false;
   const sidebarOpen = () => (NARROW.matches ? narrowOpen : wideOpen);
   const sidebarButton = h("button", {
-    class: "tool-button sidebar-toggle",
+    class: "icon-btn sidebar-toggle",
     "aria-controls": "library-sidebar",
     onclick: () => {
       if (NARROW.matches) narrowOpen = !narrowOpen;
@@ -620,7 +593,8 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
     const open = sidebarOpen();
     root.querySelector(".library")?.setAttribute("data-sidebar", open ? "open" : "closed");
     sidebarButton.setAttribute("aria-expanded", String(open));
-    sidebarButton.replaceChildren(icon("sidebar"), h("span", { class: "tool-label" }, open ? t("hideSidebar") : t("showSidebar")));
+    sidebarButton.replaceChildren(icon("sidebar"));
+    sidebarButton.setAttribute("aria-label", open ? t("hideSidebar") : t("showSidebar"));
     sidebarButton.title = open ? t("hideSidebar") : t("showSidebar");
   }
   const onNarrowChange = () => {
@@ -632,28 +606,27 @@ export async function renderLibrary(root: HTMLElement, onOpen: (book: Book, jump
 
   const header = h(
     "header",
-    { class: "toolbar library-toolbar" },
+    { class: "lib-toolbar" },
     sidebarButton,
-    h("h1", {}, t("appName")),
-    searchBox,
-    searchToggle,
-    sortSelect,
+    h("div", { class: "lib-heading" }, titleEl, subtitleEl),
+    searchField(searchInput),
+    sortField,
+    layoutSwitch,
     selectButton,
-    menuButton,
   );
 
   root.replaceChildren(
     h(
       "div",
       { class: "library" },
-      header,
-      h("div", { class: "library-body" }, sidebar, backdrop, h("main", { class: "library-main" }, viewHeader, banner, status, grid, notebook.el)),
+      h("div", { class: "library-body" }, sidebar, backdrop, h("main", { class: "library-main" }, header, viewHeader, banner, status, grid)),
       selectionBar,
       dropOverlay,
     ),
   );
 
   applySidebar();
+  focusSearchOnCtrlF(searchInput, root);
   // Esc closes the drawer or leaves selection mode (dialogs and menus handle their own Esc).
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape" || document.querySelector("dialog[open], .menu")) return;

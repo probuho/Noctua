@@ -95,3 +95,9 @@ export function continueCandidate(books: Book[]): Book | null {
   const recent = booksInView(books, { kind: "recent" });
   return recent.find((b) => b.progress < 0.99 && b.readAt === null) ?? null;
 }
+
+/** Category colors from the design, assigned by id so each keeps its color. */
+const CATEGORY_COLORS = ["#E3A63F", "#7FA7D9", "#8CC6A0", "#D98C9A", "#B39DDB", "#E8957A", "#6FC3C3"];
+export function categoryColor(id: number): string {
+  return CATEGORY_COLORS[(id - 1 + CATEGORY_COLORS.length) % CATEGORY_COLORS.length];
+}

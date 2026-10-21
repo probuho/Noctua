@@ -69,3 +69,19 @@ export function openSupportDialog(): void {
   document.body.append(dialog);
   dialog.showModal();
 }
+
+/** Sidebar card from the design ("Apoyar a Noctua"): opens the support dialog. */
+export function supportCard(): HTMLElement {
+  return h(
+    "section",
+    { class: "support-card", "aria-labelledby": "support-card-title" },
+    h(
+      "div",
+      { class: "sc-head" },
+      h("span", { class: "sc-coffee", "aria-hidden": "true" }, icon("coffee")),
+      h("div", {}, h("p", { id: "support-card-title", class: "sc-title" }, `${t("supportTitle")} ☕`), h("p", { class: "sc-sub" }, t("supportFreeShort"))),
+    ),
+    h("p", { class: "sc-desc" }, t("supportCardDesc")),
+    h("button", { type: "button", class: "sc-link", onclick: () => openSupportDialog() }, h("span", {}, t("supportCoffee")), icon("arrow-up-right")),
+  );
+}

@@ -31,6 +31,7 @@ base64 = "0.22"
 ureq = "3"
 trash = "5.2.9"
 zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
+tauri-plugin-window-state = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

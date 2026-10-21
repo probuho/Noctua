@@ -1,4 +1,8 @@
 import { api, loadBookFile, type Book } from "../../api";
+import { loadSummary, trackReading } from "../../stats";
+import { promptDialog } from "../dialogs";
+import { formatDuration } from "../import-progress";
+import { dragRegion, windowControls } from "../window-controls";
 import { getFormat, PasswordCancelledError, type PageLayout, type ReaderSession, type ReadingPosition } from "../../formats";
 import { t } from "../../i18n";
 import { confirmDialog } from "../dialogs";
@@ -24,21 +28,11 @@ const HELP_ID = "reader-help-panel";
  */
 const sessionPasswords = new Map<number, string>();
 
-/** Toolbar button with an icon and a text label (hidden visually on narrow windows). */
-function toolButton(name: IconName, label: string, onclick: () => void, attrs: Record<string, string> = {}) {
-  return h(
-    "button",
-    { class: "tool-button", title: label, onclick, ...attrs },
-    icon(name),
-    h("span", { class: "tool-label" }, label),
-  );
-}
-
 /**
  * Opens `book` where the reader left off. With `jumpTo` (a note, bookmark or
  * journal position) it then jumps there, so "Back" returns to the last read spot.
  */
-export async function renderReader(root: HTMLElement, book: Book, onClose: () => void, jumpTo?: string): Promise<void> {
+export async function renderReader(root: HTMLElement, book: Book, onClose: () => void, jumpTo?: string, panel?: "bookmarks"): Promise<void> {
   const settings = loadSettings();
   applyAppTheme(settings.theme);
 
@@ -50,11 +44,15 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
   // Mount the final layout before opening the book: moving the stage in the
   // DOM afterwards would reload the book's iframes and blank the page.
   const body = h("div", { class: "reader-body" }, stage);
-  const placeholderBar = h(
-    "header",
-    { class: "toolbar reader-toolbar" },
-    toolButton("back", t("back"), onClose),
-    h("span", { class: "reader-title" }, book.title),
+  const placeholderBar = dragRegion(
+    h(
+      "header",
+      { class: "reader-bar" },
+      h("button", { type: "button", class: "back-link", onclick: onClose }, icon("arrow-left"), h("span", {}, t("library"))),
+      dragRegion(h("div", { class: "reader-heading" }, h("span", { class: "reader-title" }, book.title))),
+      h("span", { class: "topbar-sep" }),
+      windowControls(),
+    ),
   );
   const placeholderRail = h("nav", { class: "activity-rail" });
   const placeholderNav = h("footer", { class: "reader-nav" });
@@ -89,7 +87,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
           { class: "empty locked" },
           icon("lock"),
           h("p", {}, t("passwordRequired")),
-          h("button", { class: "primary", onclick: () => void renderReader(root, book, onClose, jumpTo) }, t("unlock")),
+          h("button", { class: "primary", onclick: () => void renderReader(root, book, onClose, jumpTo, panel) }, t("unlock")),
           h("button", { onclick: onClose }, t("back")),
         ),
       );
@@ -135,6 +133,11 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     },
     { passive: false },
   );
+
+  // Active reading time (statistics) and reading speed (time left).
+  const tracker = trackReading(book.id);
+  let secondsPerBook: number | null = null;
+  void loadSummary(0).then(({ summary }) => (secondsPerBook = summary.secondsPerBook)).catch(() => {});
 
   // --- State ----------------------------------------------------------------
   let position: ReadingPosition | null = null;
@@ -200,13 +203,15 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
 
   // --- Toolbar --------------------------------------------------------------
   const positionLabel = h("span", { class: "position" });
-  const settingsButton = toolButton("text", t("settingsShort"), () => toggleSettings(), {
+  /** Icon-only tool from the design; the label is tooltip and accessible name. */
+  const tool = (name: IconName, label: string, onclick: () => void, attrs: Record<string, string> = {}) =>
+    h("button", { type: "button", class: "tool-icon", title: label, "aria-label": label, onclick, ...attrs }, icon(name));
+  const settingsButton = tool("type", t("settingsShort"), () => toggleSettings(), {
     "aria-expanded": "false",
     "aria-controls": SETTINGS_ID,
   });
-  const helpButton = toolButton("help", t("helpShort"), () => toggleHelp(), { "aria-expanded": "false", "aria-controls": HELP_ID });
-  const flipButton = toolButton("play", t("autoShort"), () => toggleAutoFlip(), { "aria-pressed": "false" });
-  flipButton.title = t("autoFlipStart");
+  const helpButton = tool("help", t("helpShort"), () => toggleHelp(), { "aria-expanded": "false", "aria-controls": HELP_ID });
+  const flipButton = tool("play", t("autoFlipStart"), () => toggleAutoFlip(), { "aria-pressed": "false" });
 
   const viewHolder = h("div", { class: "view-switch", role: "group", "aria-label": t("viewMode") });
   const syncViewSwitch = () =>
@@ -228,45 +233,45 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     );
   syncViewSwitch();
 
-  const toolbar = h(
-    "header",
-    { class: "toolbar reader-toolbar" },
-    toolButton("back", t("back"), () => void close()),
-    h("div", { class: "reader-heading" }, h("span", { class: "reader-title" }, book.title), positionLabel),
-    viewHolder,
-    settingsButton,
-    flipButton,
-    toolButton("fullscreen", t("fullscreenShort"), () => void toggleFullscreen()),
-    helpButton,
-  );
-
-  // --- Activity rail: one button per side panel, icon + visible label ---------
+  // Panel tools: one per side panel (index, search, bookmarks, notes, journal).
   const railButtons = new Map<PanelTab, HTMLButtonElement>();
-  const rail = h(
-    "nav",
-    { class: "activity-rail", "aria-label": t("readerTools") },
-    ...PANEL_TABS.filter((tab) => side.has(tab.id)).map((tab) => {
-      const button = h(
-        "button",
-        {
-          class: "rail-button",
-          "aria-expanded": "false",
-          "aria-controls": PANEL_ID,
-          onclick: () => side.toggle(tab.id),
-        },
-        icon(tab.icon),
-        h("span", {}, t(tab.label)),
-      );
-      railButtons.set(tab.id, button);
-      return button;
-    }),
-  );
+  const PANEL_ICONS: Partial<Record<PanelTab, IconName>> = { toc: "list-tree", search: "search", bookmarks: "bookmark", notes: "sticky-note", journal: "notebook-pen" };
+  const panelTools = PANEL_TABS.filter((tab) => side.has(tab.id)).map((tab) => {
+    const button = tool(PANEL_ICONS[tab.id] ?? tab.icon, t(tab.label), () => side.toggle(tab.id), {
+      "aria-expanded": "false",
+      "aria-controls": PANEL_ID,
+    }) as HTMLButtonElement;
+    railButtons.set(tab.id, button);
+    return button;
+  });
   side.onChange((open) => railButtons.forEach((button, id) => button.setAttribute("aria-expanded", String(open === id))));
+
+  const toolbar = dragRegion(
+    h(
+      "header",
+      { class: "reader-bar" },
+      h("button", { type: "button", class: "back-link", onclick: () => void close() }, icon("arrow-left"), h("span", {}, t("library"))),
+      dragRegion(h("div", { class: "reader-heading" }, h("span", { class: "reader-title" }, book.title), positionLabel)),
+      h(
+        "div",
+        { class: "reader-tools", role: "toolbar", "aria-label": t("readerTools") },
+        ...panelTools,
+        h("span", { class: "tools-sep", "aria-hidden": "true" }),
+        viewHolder,
+        settingsButton,
+        flipButton,
+        tool("maximize", t("fullscreenShort"), () => void toggleFullscreen()),
+        helpButton,
+      ),
+      h("span", { class: "topbar-sep", "aria-hidden": "true" }),
+      windowControls(),
+    ),
+  );
 
   // --- Footer: navigation, progress slider, go to page ------------------------
   const footerButton = (name: IconName, label: string, onclick: () => void, attrs: Record<string, string | boolean> = {}) =>
     h("button", { class: "tool-button", title: label, onclick, ...attrs }, icon(name), h("span", { class: "tool-label" }, label));
-  const backButton = footerButton("undo", t("goBack"), () => void session.back(), { disabled: true });
+  const backButton = footerButton("undo", t("goBack"), () => void session.back(), { hidden: true });
   const sliderId = "reader-progress";
   const slider = h("input", { id: sliderId, type: "range", class: "progress-slider", min: 0, max: SLIDER_STEPS, value: 0 });
   slider.addEventListener("input", () => {
@@ -282,39 +287,32 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
 
   const pageInput = h("input", { id: "reader-page", type: "number", class: "narrow", min: 1 });
   const pageTotal = h("span", { class: "muted" });
-  const pageForm = session.capabilities.pages
-    ? h(
-        "form",
-        {
-          class: "page-jump",
-          onsubmit: (e: Event) => {
-            e.preventDefault();
-            if (pageInput.value) void session.goTo(pageInput.value);
-            pageInput.blur();
-          },
-        },
-        h("label", { for: "reader-page" }, t("page")),
-        pageInput,
-        pageTotal,
-      )
-    : null;
-
+  const pageText = h("button", {
+    type: "button",
+    class: "page-text",
+    title: t("goToPage"),
+    onclick: async () => {
+      const value = await promptDialog(t("goToPage"), pageInput.value);
+      if (value) void session.goTo(value.trim());
+    },
+  });
+  if (!session.capabilities.pages) pageText.disabled = true;
+  const remaining = h("span", { class: "remaining" });
   const nav = h(
     "footer",
-    { class: "reader-nav" },
-    footerButton("prev", t("prev"), () => void session.prev()),
+    { class: "reader-footer" },
     backButton,
+    pageText,
     h("label", { for: sliderId, class: "visually-hidden" }, t("progress")),
     slider,
-    pageForm,
-    footerButton("next", t("next"), () => void session.next()),
+    remaining,
   );
 
   body.prepend(side.el);
   body.append(settingsPanel.el, help);
   if (annotator) body.append(annotator.popup);
   placeholderBar.replaceWith(toolbar);
-  placeholderRail.replaceWith(rail);
+  placeholderRail.remove();
   placeholderNav.replaceWith(nav);
 
   // --- Floating panels: settings and help -------------------------------------
@@ -361,7 +359,13 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
       pageInput.max = String(pos.page.total);
       pageTotal.textContent = `/ ${pos.page.total}`;
     }
-    backButton.disabled = !session.canGoBack();
+    backButton.hidden = !session.canGoBack();
+    pageText.textContent = pos.page
+      ? t("pageOf", String(pos.page.current), String(pos.page.total))
+      : (pos.label ?? "");
+    const left = secondsPerBook && pos.progress < 0.995 ? ` · ${t("timeLeft", formatDuration(secondsPerBook * (1 - pos.progress)))}` : "";
+    remaining.textContent = `${Math.round(pos.progress * 100)} %${left}`;
+    tracker.activity();
     annotator?.hide();
 
     pending = pos;
@@ -464,7 +468,7 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
     document.removeEventListener("keydown", onKey);
     toggleAutoFlip(false);
     side.destroy();
-    await flush();
+    await Promise.all([flush(), tracker.stop()]);
     if (await isFullscreen()) await setFullscreen(false);
     session.destroy();
     if (position && position.progress >= 0.99 && book.readAt === null) {
@@ -475,4 +479,5 @@ export async function renderReader(root: HTMLElement, book: Book, onClose: () =>
 
   updateSettings();
   if (jumpTo) await session.goTo(jumpTo);
+  if (panel) side.open(panel);
 }

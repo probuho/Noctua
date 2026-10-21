@@ -25,10 +25,16 @@ pub fn list_books(state: State<LibraryState>) -> Result<Vec<Book>> {
     lock(&state).list()
 }
 
-/// Accepts files and folders (scanned recursively).
-#[tauri::command]
-pub fn add_books(paths: Vec<String>, state: State<LibraryState>) -> Result<AddResult> {
-    lock(&state).add_paths(&paths)
+/// Accepts files and folders (scanned recursively). Runs off the main thread
+/// and emits "import-scan" with the number of books found, so the window stays
+/// responsive and can show progress on large folders.
+#[tauri::command(async)]
+pub fn add_books(paths: Vec<String>, app: tauri::AppHandle, state: State<LibraryState>) -> Result<AddResult> {
+    use tauri::Emitter;
+    let (candidates, unsupported) = crate::library::scan(&paths, |found| {
+        let _ = app.emit("import-scan", found);
+    });
+    lock(&state).add_candidates(candidates, unsupported)
 }
 
 /// Returns the raw file bytes as an ArrayBuffer. Reading through the backend
@@ -269,7 +275,7 @@ pub fn clear_annotations(book_id: i64, state: State<LibraryState>) -> Result<()>
 /// are allowed, so this cannot be used to overwrite arbitrary files.
 #[tauri::command]
 pub fn save_export(path: String, contents: String) -> Result<()> {
-    let allowed = ["html", "htm", "md", "txt"];
+    let allowed = ["html", "htm", "md", "txt", "csv"];
     let ext = std::path::Path::new(&path)
         .extension()
         .and_then(|e| e.to_str())
@@ -449,6 +455,18 @@ pub fn metadata_description(key: String) -> Result<Option<String>> {
 #[tauri::command(async)]
 pub fn metadata_cover(cover_id: i64, size: String) -> Result<Response> {
     Ok(Response::new(crate::openlibrary::cover(cover_id, &size)?))
+}
+
+// --- Reading time ------------------------------------------------------------------
+
+#[tauri::command]
+pub fn log_reading(book_id: i64, day: String, seconds: i64, state: State<LibraryState>) -> Result<()> {
+    lock(&state).log_reading(book_id, &day, seconds)
+}
+
+#[tauri::command]
+pub fn reading_log(state: State<LibraryState>) -> Result<Vec<crate::library::ReadingDay>> {
+    lock(&state).reading_log()
 }
 
 // --- Settings ----------------------------------------------------------------------

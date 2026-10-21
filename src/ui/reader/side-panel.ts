@@ -58,12 +58,30 @@ export function createSidePanel({ book, session, annotator, position }: Deps) {
   const changeListeners: Array<(tab: PanelTab | null) => void> = [];
 
   const title = h("h2", { id: `${PANEL_ID}-title` });
+  // Index, bookmarks and notes share a segmented switch (as in the design);
+  // search and journal show their own title.
+  const TABBED: PanelTab[] = ["toc", "bookmarks", "notes"];
+  const tabsEl = h("div", { class: "panel-tabs", role: "tablist", "aria-label": t("readerTools") });
+  const drawTabs = () => {
+    const tabbed = TABBED.includes(tab);
+    tabsEl.hidden = !tabbed;
+    title.classList.toggle("visually-hidden", tabbed);
+    tabsEl.replaceChildren(
+      ...TABBED.filter((id) => views[id]).map((id) =>
+        h(
+          "button",
+          { type: "button", role: "tab", "aria-selected": String(id === tab), tabindex: id === tab ? 0 : -1, onclick: () => open(id) },
+          t(PANEL_TABS.find((x) => x.id === id)!.label),
+        ),
+      ),
+    );
+  };
   const body = h("div", { class: "panel-body" });
   const closeButton = iconAction("close", t("closePanel"), () => close());
   const el = h(
     "aside",
     { id: PANEL_ID, class: "side-panel", hidden: true, "aria-labelledby": `${PANEL_ID}-title` },
-    h("header", { class: "panel-header" }, title, closeButton),
+    h("header", { class: "panel-header" }, title, tabsEl, closeButton),
     body,
   );
 
@@ -345,6 +363,7 @@ export function createSidePanel({ book, session, annotator, position }: Deps) {
     tab = next;
     title.textContent = t(PANEL_TABS.find((x) => x.id === next)!.label);
     body.replaceChildren(views[next]!);
+    drawTabs();
     el.hidden = false;
     emit();
     firstFocusable[next]()?.focus();

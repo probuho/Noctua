@@ -14,6 +14,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Remembers size, position and maximized state between sessions.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             // NOCTUA_DATA_DIR runs the real app on a separate library (for
             // testing without touching the user's own books and notes).
@@ -67,6 +69,8 @@ pub fn run() {
             commands::journal_write,
             commands::journal_save_image,
             commands::journal_image,
+            commands::log_reading,
+            commands::reading_log,
             commands::metadata_search,
             commands::metadata_description,
             commands::metadata_cover,

@@ -172,7 +172,23 @@ const MIGRATIONS: &[&str] = &[
         key         TEXT PRIMARY KEY,
         value       TEXT NOT NULL
     );",
+    // 5: active reading time per local day and book (for streaks and statistics).
+    "CREATE TABLE reading_log (
+        day         TEXT NOT NULL,
+        book_id     INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+        seconds     INTEGER NOT NULL,
+        PRIMARY KEY (day, book_id)
+    );",
 ];
+
+/// Reading time of one book on one local day ("YYYY-MM-DD").
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingDay {
+    pub day: String,
+    pub book_id: i64,
+    pub seconds: i64,
+}
 
 pub struct Library {
     conn: Connection,
@@ -220,6 +236,33 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 /// with at least one letter or digit.
 fn meaningful(value: Option<&str>) -> Option<&str> {
     non_empty(value).filter(|v| v.chars().any(char::is_alphanumeric))
+}
+
+/// Walks the given files and folders (recursively) and returns the supported
+/// books and the paths the user picked that are not books. `progress` gets the
+/// number of books found so far, every 25 books.
+pub fn scan(paths: &[String], mut progress: impl FnMut(usize)) -> (Vec<String>, Vec<String>) {
+    let mut candidates = Vec::new();
+    let mut unsupported = Vec::new();
+    for raw in paths {
+        let path = Path::new(raw);
+        if path.is_dir() {
+            for entry in WalkDir::new(path).max_depth(MAX_SCAN_DEPTH).into_iter().flatten() {
+                if entry.file_type().is_file() && formats::detect(entry.path()).is_some() {
+                    candidates.push(entry.path().to_string_lossy().into_owned());
+                    if candidates.len() % 25 == 0 {
+                        progress(candidates.len());
+                    }
+                }
+            }
+        } else if formats::detect(path).is_some() {
+            candidates.push(raw.clone());
+        } else {
+            unsupported.push(raw.clone());
+        }
+    }
+    progress(candidates.len());
+    (candidates, unsupported)
 }
 
 impl Library {
@@ -277,24 +320,15 @@ impl Library {
     /// Adds files and, recursively, the supported books inside folders.
     /// Unsupported files inside folders are skipped silently; only paths the
     /// user picked explicitly are reported as unsupported.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn add_paths(&mut self, paths: &[String]) -> Result<AddResult> {
-        let mut result = AddResult::default();
-        let mut candidates = Vec::new();
-        for raw in paths {
-            let path = Path::new(raw);
-            if path.is_dir() {
-                for entry in WalkDir::new(path).max_depth(MAX_SCAN_DEPTH).into_iter().flatten() {
-                    if entry.file_type().is_file() && formats::detect(entry.path()).is_some() {
-                        candidates.push(entry.path().to_string_lossy().into_owned());
-                    }
-                }
-            } else if formats::detect(path).is_some() {
-                candidates.push(raw.clone());
-            } else {
-                result.unsupported.push(raw.clone());
-            }
-        }
+        let (candidates, unsupported) = scan(paths, |_| {});
+        self.add_candidates(candidates, unsupported)
+    }
 
+    /// Inserts files found by `scan` (the slow disk walk runs without the lock).
+    pub fn add_candidates(&mut self, candidates: Vec<String>, unsupported: Vec<String>) -> Result<AddResult> {
+        let mut result = AddResult { unsupported, ..AddResult::default() };
         let tx = self.conn.transaction()?;
         let mut added_ids = Vec::new();
         for raw in candidates {
@@ -591,6 +625,35 @@ impl Library {
         self.query_journal("WHERE book_id = ?1", [book_id])
     }
 
+    /// Adds active reading time. `day` is the reader's local date; at most five
+    /// minutes are counted per call, so a stuck timer cannot inflate statistics.
+    pub fn log_reading(&self, book_id: i64, day: &str, seconds: i64) -> Result<()> {
+        let valid = day.len() == 10 && day.bytes().enumerate().all(|(i, b)| if i == 4 || i == 7 { b == b'-' } else { b.is_ascii_digit() });
+        if !valid {
+            return Err(Error::Invalid(format!("invalid day: {day}")));
+        }
+        let seconds = seconds.clamp(0, 300);
+        if seconds == 0 {
+            return Ok(());
+        }
+        self.conn.execute(
+            "INSERT INTO reading_log (day, book_id, seconds) VALUES (?1, ?2, ?3)
+             ON CONFLICT (day, book_id) DO UPDATE SET seconds = seconds + excluded.seconds",
+            params![day, book_id, seconds],
+        )?;
+        Ok(())
+    }
+
+    /// All logged reading time of books not in the trash, oldest day first.
+    pub fn reading_log(&self) -> Result<Vec<ReadingDay>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT day, book_id, seconds FROM reading_log
+             WHERE book_id IN (SELECT id FROM books WHERE deleted_at IS NULL) ORDER BY day",
+        )?;
+        let rows = stmt.query_map([], |r| Ok(ReadingDay { day: r.get(0)?, book_id: r.get(1)?, seconds: r.get(2)? }))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Every journal entry of books not in the trash, newest first.
     pub fn all_journal(&self) -> Result<Vec<JournalEntry>> {
         self.query_journal("WHERE book_id IN (SELECT id FROM books WHERE deleted_at IS NULL)", [])
@@ -679,6 +742,31 @@ impl Library {
     pub fn clear_bookmarks(&self, book_id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM bookmarks WHERE book_id = ?1", [book_id])?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod reading_log_tests {
+    use super::*;
+
+    #[test]
+    fn reading_time_adds_up_per_day_and_is_capped() {
+        let dir = std::env::temp_dir().join(format!("noctua-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pdf = dir.join("l.pdf");
+        std::fs::write(&pdf, b"%PDF-1.4\n").unwrap();
+        let mut lib = Library::open_in_memory().unwrap();
+        let id = lib.add_paths(&[pdf.to_string_lossy().into_owned()]).unwrap().added[0].id;
+        lib.log_reading(id, "2026-10-20", 60).unwrap();
+        lib.log_reading(id, "2026-10-20", 9999).unwrap();
+        lib.log_reading(id, "2026-10-21", 30).unwrap();
+        assert!(lib.log_reading(id, "20-10-2026", 30).is_err());
+        let log = lib.reading_log().unwrap();
+        assert_eq!(log, vec![
+            ReadingDay { day: "2026-10-20".into(), book_id: id, seconds: 360 },
+            ReadingDay { day: "2026-10-21".into(), book_id: id, seconds: 30 },
+        ]);
     }
 }
 

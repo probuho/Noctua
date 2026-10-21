@@ -33,6 +33,12 @@ export interface Annotation {
   updatedAt: number;
 }
 
+export interface ReadingDay {
+  day: string;
+  bookId: number;
+  seconds: number;
+}
+
 export interface MetadataCandidate {
   key: string;
   title: string;
@@ -129,7 +135,7 @@ export const api = {
     invoke<Annotation[]>("update_annotation", { id, bookId, note, color }),
   deleteAnnotation: (id: number, bookId: number) => invoke<Annotation[]>("delete_annotation", { id, bookId }),
   clearAnnotations: (bookId: number) => invoke<void>("clear_annotations", { bookId }),
-  /** Only .html, .md and .txt paths are accepted. */
+  /** Only .html, .md, .txt and .csv paths are accepted. */
   saveExport: (path: string, contents: string) => invoke<void>("save_export", { path, contents }),
 
   listJournal: (bookId: number) => invoke<JournalEntry[]>("list_journal", { bookId }),
@@ -138,6 +144,10 @@ export const api = {
   updateJournalEntry: (id: number, bookId: number, body: string) =>
     invoke<JournalEntry[]>("update_journal_entry", { id, bookId, body }),
   deleteJournalEntry: (id: number, bookId: number) => invoke<JournalEntry[]>("delete_journal_entry", { id, bookId }),
+
+  /** Active reading time: `day` is the local date "YYYY-MM-DD". */
+  logReading: (bookId: number, day: string, seconds: number) => invoke<void>("log_reading", { bookId, day, seconds }),
+  readingLog: () => invoke<ReadingDay[]>("reading_log"),
 
   /** Open Library: sends only the title and author typed by the user. */
   metadataSearch: (title: string, author: string | null) => invoke<MetadataCandidate[]>("metadata_search", { title, author }),

@@ -179,6 +179,24 @@ Para comprobar que nada importante se ha roto tras un cambio:
 - [ ] **A39** **Seleccionar**: el botón queda azul, dice «Terminar selección» y abajo aparece «Haz clic en los libros para marcarlos…». Esc sale.
 
 
+## R. Rediseño (wireframe) y ventana
+
+- [ ] **R1** La ventana no tiene marco de Windows: arriba está la barra de Noctua con **Inicio, Biblioteca, Colecciones, Notas, Estadísticas**, el cambio **Noche/Día**, **Ajustes** y los botones minimizar / maximizar / cerrar.
+- [ ] **R2** Arrastrar la barra superior mueve la ventana; doble clic en una zona vacía la maximiza; arrastrarla a un borde o Win+Z la acopla (Snap); los bordes la redimensionan.
+- [ ] **R3** El botón maximizar cambia a «Restaurar» cuando la ventana está maximizada. **F11** pone y quita pantalla completa en cualquier pantalla.
+- [ ] **R4** Cerrar y volver a abrir la app conserva el tamaño, la posición y si estaba maximizada.
+- [ ] **R5** A media pantalla (Snap) y a un cuarto: no aparece barra de desplazamiento horizontal; la navegación muestra solo iconos; el panel de la biblioteca se abre como cajón.
+- [ ] **R6** **Inicio**: racha (días seguidos con lectura), libros activos, buscador por formato y categoría (**Explorar**), **Abrir archivo local**, **Ver marcadores**, lecturas recientes, **Reanudar** y accesos a colecciones.
+- [ ] **R7** **Estadísticas**: tras leer unos minutos aparecen el tiempo del día, la racha, los libros por tiempo y la distribución por formato; **Exportar** guarda un CSV.
+- [ ] **R8** **Noche/Día** cambia toda la app y la página del libro (oscura/clara).
+
+## I. Importar carpetas grandes
+
+- [ ] **I1** **Añadir libros → Carpeta…** con una carpeta de cientos de libros: aparece **Importando libros** con «Buscando libros…» y el número encontrado, luego «N de M libros», la barra y el **tiempo restante**.
+- [ ] **I2** **Seguir en segundo plano** deja una tarjeta pequeña abajo a la derecha y la app se puede usar; el botón de la tarjeta vuelve a mostrar el progreso.
+- [ ] **I3** Al terminar suena un aviso (se puede apagar en **Ajustes**) y se muestran los libros añadidos y cuánto tardó.
+- [ ] **I4** **Cancelar** detiene la lectura de títulos y portadas; los libros ya quedan en la biblioteca.
+
 ## B. Lector (todos los formatos)
 
 Distribución del lector: arriba, **Biblioteca**, el título con la posición,

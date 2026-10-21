@@ -5,12 +5,13 @@ export const THEMES: Theme[] = ["light", "sepia", "dark", "night-sepia"];
 export const THEME_COLORS: Record<Theme, { bg: string; fg: string; link: string }> = {
   light: { bg: "#ffffff", fg: "#1f1f1f", link: "#1a5fb4" },
   sepia: { bg: "#f4ecd8", fg: "#5b4636", link: "#8a4b08" },
-  dark: { bg: "#1b1b1d", fg: "#d6d6d6", link: "#8ab4f8" },
+  // Night page from the design: the app surface with warm off-white text.
+  dark: { bg: "#161f2c", fg: "#e8e6e1", link: "#e5a93c" },
   "night-sepia": { bg: "#2a2118", fg: "#d9c7a7", link: "#e0a96d" },
 };
 
 export const FONT_STACKS = {
-  serif: 'Georgia, "Times New Roman", serif',
+  serif: '"Literata Variable", Literata, Georgia, "Times New Roman", serif',
   sans: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   mono: 'ui-monospace, "Cascadia Mono", Consolas, monospace',
 } as const;
