@@ -2,6 +2,7 @@ import { api, type Book } from "../../api";
 import { t } from "../../i18n";
 import { alertDialog } from "../dialogs";
 import { blobToThumbnail, h } from "../dom";
+import { createOnlineLookup } from "./online-metadata";
 
 const dateFormat = new Intl.DateTimeFormat(navigator.language, { dateStyle: "medium", timeStyle: "short" });
 
@@ -63,6 +64,19 @@ export function openProperties(initial: Book): Promise<void> {
     const description = h("textarea", { name: "description", rows: 4 });
     description.value = book.description ?? "";
 
+    const lookup = createOnlineLookup({
+      query: () => ({ title: title.value, author: author.value.trim() || null }),
+      useData: (data) => {
+        title.value = data.title;
+        author.value = data.author ?? "";
+        if (data.description) description.value = data.description;
+      },
+      useCover: async (image) => {
+        book = await api.setCover(book.id, await blobToThumbnail(image));
+        drawCover();
+      },
+    });
+
     const field = (label: string, control: HTMLElement) => h("label", { class: "field" }, h("span", {}, label), control);
     const info = (label: string, value: string) => [h("dt", {}, label), h("dd", {}, value)];
 
@@ -103,6 +117,7 @@ export function openProperties(initial: Book): Promise<void> {
             ),
           ),
         ),
+        lookup.el,
         h(
           "div",
           { class: "modal-actions" },
@@ -121,6 +136,7 @@ export function openProperties(initial: Book): Promise<void> {
           description: description.value.trim() || null,
         });
       }
+      lookup.destroy();
       dialog.remove();
       resolve();
     });

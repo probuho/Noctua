@@ -814,3 +814,15 @@ kbd { font: 0.8rem ui-monospace, monospace; padding: 1px 6px; border: 1px solid 
 .md-preview ul { list-style: disc; padding-left: 22px !important; }
 .md-preview ol { list-style: decimal; padding-left: 22px !important; }
 .md-preview li { padding: 1px 0; }
+
+/* --- Open Library lookup (book properties) ------------------------------- */
+.online-lookup { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.online-lookup h3 { margin: 0; font-size: 1rem; }
+.online-lookup p { margin: 0; }
+.online-lookup > button { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+.ol-results { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.ol-item { display: grid; grid-template-columns: 56px 1fr; gap: 12px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.ol-cover { width: 56px; height: 84px; border-radius: 4px; overflow: hidden; display: grid; place-items: center; background: var(--hover, rgba(127, 127, 127, 0.12)); font-size: 0.7rem; color: var(--muted); text-align: center; }
+.ol-cover img { width: 100%; height: 100%; object-fit: cover; }
+.ol-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.ol-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }

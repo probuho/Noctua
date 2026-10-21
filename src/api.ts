@@ -33,6 +33,16 @@ export interface Annotation {
   updatedAt: number;
 }
 
+export interface MetadataCandidate {
+  key: string;
+  title: string;
+  authors: string[];
+  year: number | null;
+  coverId: number | null;
+  publisher: string | null;
+  languages: string[];
+}
+
 export interface JournalFile {
   folder: string | null;
   file: string;
@@ -124,6 +134,11 @@ export const api = {
   updateJournalEntry: (id: number, bookId: number, body: string) =>
     invoke<JournalEntry[]>("update_journal_entry", { id, bookId, body }),
   deleteJournalEntry: (id: number, bookId: number) => invoke<JournalEntry[]>("delete_journal_entry", { id, bookId }),
+
+  /** Open Library: sends only the title and author typed by the user. */
+  metadataSearch: (title: string, author: string | null) => invoke<MetadataCandidate[]>("metadata_search", { title, author }),
+  metadataDescription: (key: string) => invoke<string | null>("metadata_description", { key }),
+  metadataCover: (coverId: number, size: "S" | "M" | "L") => invoke<ArrayBuffer>("metadata_cover", { coverId, size }),
 
   /** Reading journal: one Markdown file per book in a folder the user picks. */
   journalFolder: () => invoke<string | null>("journal_folder"),

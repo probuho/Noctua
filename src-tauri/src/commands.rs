@@ -364,6 +364,24 @@ pub fn journal_image(path: String, state: State<LibraryState>) -> Result<Respons
     Ok(Response::new(std::fs::read(journal_files::image_path(&dir, &path)?)?))
 }
 
+// --- Open Library (online metadata and covers) --------------------------------------
+// `async` runs them off the main thread, so the window stays responsive.
+
+#[tauri::command(async)]
+pub fn metadata_search(title: String, author: Option<String>) -> Result<Vec<crate::openlibrary::Candidate>> {
+    crate::openlibrary::search(&title, author.as_deref())
+}
+
+#[tauri::command(async)]
+pub fn metadata_description(key: String) -> Result<Option<String>> {
+    crate::openlibrary::description(&key)
+}
+
+#[tauri::command(async)]
+pub fn metadata_cover(cover_id: i64, size: String) -> Result<Response> {
+    Ok(Response::new(crate::openlibrary::cover(cover_id, &size)?))
+}
+
 // --- Settings ----------------------------------------------------------------------
 
 /// Settings are opaque JSON strings owned by the frontend.

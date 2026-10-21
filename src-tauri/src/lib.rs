@@ -2,6 +2,7 @@ mod commands;
 mod error;
 mod formats;
 mod journal_files;
+mod openlibrary;
 mod library;
 
 use std::sync::Mutex;
@@ -60,6 +61,9 @@ pub fn run() {
             commands::journal_write,
             commands::journal_save_image,
             commands::journal_image,
+            commands::metadata_search,
+            commands::metadata_description,
+            commands::metadata_cover,
             commands::get_setting,
             commands::set_setting,
             commands::list_bookmarks,
