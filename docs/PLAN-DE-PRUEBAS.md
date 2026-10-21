@@ -163,6 +163,22 @@ Para comprobar que nada importante se ha roto tras un cambio:
 
 ---
 
+### Orden de archivos, papelera y recarga
+
+- [ ] **A30** **Propiedades** de un EPUB: cambiar título y autor, con las dos casillas de **Orden de los archivos** marcadas.
+  *Esperado:* «Se llamará: Autor - Título.epub». Al guardar, el archivo cambia de nombre en su carpeta, y Calibre u otro lector muestran el nuevo título y autor.
+- [ ] **A31** Igual con un PDF: solo se renombra (aviso «Por ahora solo los EPUB…»).
+- [ ] **A32** Si ya existe un archivo con ese nombre, el nuevo se llama «… (2)»; nunca se sobrescribe.
+- [ ] **A33** Con diario en ese libro: el `.md` cambia de nombre y sus propiedades (`title`, `author`) y el encabezado `# Título` se actualizan; lo escrito queda igual.
+- [ ] **A34** Libro sin portada: la miniatura muestra título y autor.
+- [ ] **A35** Papelera → clic derecho → **Eliminar definitivamente…** → «Eliminar también los archivos del disco».
+  *Esperado:* el archivo aparece en la Papelera de reciclaje de Windows (se puede restaurar desde ahí).
+- [ ] **A36** **Vaciar papelera** → «Solo quitarlos de Noctua» → los archivos siguen en su carpeta.
+- [ ] **A37** Dentro de un libro, pulsar F5 o Ctrl+R → se reabre el mismo libro en la misma posición.
+- [ ] **A38** **Ocultar panel** / **Mostrar panel** en la barra superior; con la ventana estrecha (menos de 900 px) el panel empieza oculto y se abre encima; Esc lo cierra.
+- [ ] **A39** **Seleccionar**: el botón queda azul, dice «Terminar selección» y abajo aparece «Haz clic en los libros para marcarlos…». Esc sale.
+
+
 ## B. Lector (todos los formatos)
 
 Distribución del lector: arriba, **Biblioteca**, el título con la posición,

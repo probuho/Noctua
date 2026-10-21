@@ -51,6 +51,57 @@ fn header(title: &str, author: Option<&str>) -> String {
     out
 }
 
+/// Updates the title/author properties and the "# Title" heading after the
+/// book's details change. The rest of the file (the user's writing) is untouched.
+pub fn retitle(text: &str, old_title: &str, title: &str, author: Option<&str>) -> String {
+    let quote = |s: &str| s.replace('"', "'");
+    let mut out = String::with_capacity(text.len());
+    let mut in_front = false;
+    let mut front_done = !text.starts_with("---");
+    let mut author_written = false;
+    let mut heading_done = false;
+    for (i, line) in text.split_inclusive('\n').enumerate() {
+        let bare = line.trim_end_matches(['\r', '\n']);
+        let eol = &line[bare.len()..];
+        if !front_done {
+            if i == 0 {
+                in_front = true;
+                out.push_str(line);
+                continue;
+            }
+            if in_front && bare == "---" {
+                if let (false, Some(a)) = (author_written, author) {
+                    out.push_str(&format!("author: \"{}\"{eol}", quote(a)));
+                }
+                in_front = false;
+                front_done = true;
+                out.push_str(line);
+                continue;
+            }
+            if bare.starts_with("title:") {
+                out.push_str(&format!("title: \"{}\"{eol}", quote(title)));
+                continue;
+            }
+            if bare.starts_with("author:") {
+                author_written = true;
+                if let Some(a) = author {
+                    out.push_str(&format!("author: \"{}\"{eol}", quote(a)));
+                }
+                continue;
+            }
+            out.push_str(line);
+            continue;
+        }
+        if !heading_done && bare == format!("# {old_title}") {
+            heading_done = true;
+            out.push_str(&format!("# {title}{eol}"));
+            continue;
+        }
+        out.push_str(line);
+    }
+    out
+}
+
 /// Appends a section to the book's journal, creating the file if needed.
 pub fn append(folder: &Path, file: &str, title: &str, author: Option<&str>, section: &str) -> Result<String> {
     ensure_folder(folder)?;
@@ -134,6 +185,21 @@ mod tests {
         assert!(text.contains("## Día 1") && text.ends_with("Adiós\n"));
         assert_eq!(read(&dir, "Libro.md").unwrap(), text);
         assert_eq!(read(&dir, "Otro.md").unwrap(), "");
+    }
+
+    #[test]
+    fn retitle_updates_properties_and_heading_only() {
+        let text = "---\ntitle: \"c\"\ntags: [noctua, lectura]\n---\n\n# c\n\n## Día\n\n# c en mi texto\n";
+        let out = retitle(text, "c", "Manual \"nuevo\"", Some("Ana"));
+        assert_eq!(
+            out,
+            "---\ntitle: \"Manual 'nuevo'\"\ntags: [noctua, lectura]\nauthor: \"Ana\"\n---\n\n# Manual \"nuevo\"\n\n## Día\n\n# c en mi texto\n"
+        );
+        let again = retitle(&out, "Manual \"nuevo\"", "Otro", None);
+        assert!(!again.contains("author:") && again.contains("title: \"Otro\"") && again.contains("\n# Otro\n"));
+        assert_eq!(retitle("Sin propiedades\n", "x", "y", None), "Sin propiedades\n");
+        // Windows line endings are kept.
+        assert_eq!(retitle("---\r\ntitle: \"a\"\r\n---\r\n# a\r\n", "a", "b", None), "---\r\ntitle: \"b\"\r\n---\r\n# b\r\n");
     }
 
     #[test]

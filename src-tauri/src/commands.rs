@@ -94,15 +94,29 @@ pub fn update_book_properties(
     let size = std::fs::metadata(&path).map(|m| m.len() as i64).unwrap_or(book.size);
     lib.set_path(id, &path.to_string_lossy(), size)?;
 
-    // The journal file is named after the title: keep it with the book.
-    if before.title != book.title {
+    // The journal file is named after the title and repeats title/author in
+    // its properties: keep both in step with the book.
+    if before.title != book.title || before.author != book.author {
         if let Some(dir) = journal_dir(&lib)? {
             let old = dir.join(journal_files::file_name_for(&before.title, id));
             let new = dir.join(journal_files::file_name_for(&book.title, id));
-            if old.exists() && !new.exists() {
-                if let Err(e) = std::fs::rename(&old, &new) {
-                    warnings.push(format!("journal: {e}"));
+            let result = (|| -> Result<()> {
+                if !old.exists() {
+                    return Ok(());
                 }
+                let text = std::fs::read_to_string(&old)?;
+                let updated = journal_files::retitle(&text, &before.title, &book.title, book.author.as_deref());
+                if old != new && new.exists() {
+                    return Err(crate::error::Error::Invalid(format!("{} already exists", new.display())));
+                }
+                std::fs::write(&old, updated)?;
+                if old != new {
+                    std::fs::rename(&old, &new)?;
+                }
+                Ok(())
+            })();
+            if let Err(e) = result {
+                warnings.push(format!("journal: {e}"));
             }
         }
     }
