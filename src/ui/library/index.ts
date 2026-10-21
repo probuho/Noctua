@@ -54,7 +54,6 @@ async function enrichMetadata(book: Book): Promise<void> {
 
 /** Listens for files dropped on the window. Returns an unsubscribe function. */
 async function onFilesDropped(onHover: (over: boolean) => void, onDrop: (paths: string[]) => void): Promise<() => void> {
-  if (!("__TAURI_INTERNALS__" in window) || "__HARNESS__" in window) return () => {};
   const { getCurrentWebview } = await import("@tauri-apps/api/webview");
   return getCurrentWebview().onDragDropEvent(({ payload }) => {
     if (payload.type === "enter" || payload.type === "over") onHover(true);

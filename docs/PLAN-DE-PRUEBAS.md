@@ -373,18 +373,17 @@ npm run build
 Comprueba los tipos de TypeScript y que el frontend compila.
 
 ```bash
-npm run dev
+npm run tauri dev
 ```
 
-Con el servidor en marcha, abre `http://localhost:1420/dev/harness.html` en un
-navegador. Esta página carga la interfaz completa con un backend simulado y
-tres libros de ejemplo. Sirve para probar la interfaz sin compilar Rust; los
-cambios no se guardan.
+Abre la app real con recarga en caliente. Todas las pruebas se hacen en la app
+real (backend Rust, base de datos y archivos de verdad), nunca con un backend
+simulado. Para probar sin tocar tu biblioteca, añade los libros de
+`dev/fixtures` y quítalos al terminar.
 
 ## Limitaciones conocidas
 
 - Los PDF escaneados no tienen texto seleccionable (haría falta OCR).
-- Los PDF con contraseña no piden la contraseña.
 - Los libros movidos o renombrados en el disco no se relocalizan.
 - Sin exportar/importar la biblioteca, texto a voz ni impresión (fases siguientes).
 

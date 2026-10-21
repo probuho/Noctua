@@ -1,16 +1,11 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-// Outside Tauri (e.g. the dev harness) fall back to the browser API.
-const inTauri = "__TAURI_INTERNALS__" in window;
-
 export async function isFullscreen(): Promise<boolean> {
-  return inTauri ? getCurrentWindow().isFullscreen() : Boolean(document.fullscreenElement);
+  return getCurrentWindow().isFullscreen();
 }
 
 export async function setFullscreen(on: boolean): Promise<void> {
-  if (inTauri) return getCurrentWindow().setFullscreen(on);
-  if (on && !document.fullscreenElement) await document.documentElement.requestFullscreen();
-  if (!on && document.fullscreenElement) await document.exitFullscreen();
+  await getCurrentWindow().setFullscreen(on);
 }
 
 export async function toggleFullscreen(): Promise<boolean> {

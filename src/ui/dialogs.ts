@@ -2,17 +2,12 @@ import { ask, message } from "@tauri-apps/plugin-dialog";
 import { t } from "../i18n";
 import { h } from "./dom";
 
-// window.confirm/alert are unreliable in WKWebView (macOS/iOS), so use native
-// dialogs in the app and fall back to the browser ones in the dev harness.
-const inTauri = "__TAURI_INTERNALS__" in window && !("__HARNESS__" in window);
-
+// window.confirm/alert are unreliable in WKWebView (macOS/iOS): use native dialogs.
 export async function confirmDialog(text: string, okLabel?: string): Promise<boolean> {
-  if (!inTauri) return window.confirm(text);
   return ask(text, { title: t("appName"), kind: "warning", okLabel, cancelLabel: t("cancel") });
 }
 
 export async function alertDialog(text: string): Promise<void> {
-  if (!inTauri) return window.alert(text);
   await message(text, { title: t("appName") });
 }
 

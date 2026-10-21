@@ -81,8 +81,8 @@ lo elimina de la biblioteca.
    (id, nombre, extensiones y comprobación de firma).
 2. Crea `src/formats/<id>.ts` que implemente `FormatPlugin` con el mismo `id`.
 3. Regístralo en `src/formats/index.ts`.
-4. Añade un archivo de ejemplo en `scripts/make_fixtures.py` y pruébalo en
-   `dev/harness.html`.
+4. Añade un archivo de ejemplo en `scripts/make_fixtures.py` y ábrelo en la app
+   (`npm run tauri dev`).
 
 foliate-js ya soporta MOBI, AZW3, FB2, FBZ y CBZ, así que esos formatos se
 pueden añadir reutilizando `epub.ts` con otras extensiones.
@@ -95,10 +95,12 @@ El plan de pruebas manual está en [docs/PLAN-DE-PRUEBAS.md](docs/PLAN-DE-PRUEBA
 npm run build                      # tsc + vite build
 cd src-tauri && cargo test         # tests del backend
 python scripts/make_fixtures.py    # genera dev/fixtures/sample.{epub,pdf}
-npm run dev                        # luego abre /dev/harness.html?book=sample.epub
+npm run tauri dev                  # la app real, con recarga en caliente
 ```
 
-`dev/harness.html` prueba los plugins en un navegador normal, sin backend.
+Las pruebas se hacen siempre sobre la app real (backend Rust, base de datos y
+archivos reales), nunca con mocks. Los libros de `dev/fixtures` son archivos
+reales para abrirlos desde la app.
 
 ## Seguridad
 
