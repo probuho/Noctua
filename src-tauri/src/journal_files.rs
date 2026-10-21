@@ -19,12 +19,7 @@ const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
 
 /// A file name that is valid on Windows, macOS and Linux.
 pub fn file_name_for(title: &str, book_id: i64) -> String {
-    let cleaned: String = title
-        .chars()
-        .map(|c| if "\\/:*?\"<>|#^[]".contains(c) || c.is_control() { ' ' } else { c })
-        .collect();
-    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
-    let cleaned: String = cleaned.trim_matches('.').chars().take(120).collect();
+    let cleaned = crate::book_files::safe_stem(title, 120);
     if cleaned.is_empty() { format!("Libro {book_id}.md") } else { format!("{cleaned}.md") }
 }
 

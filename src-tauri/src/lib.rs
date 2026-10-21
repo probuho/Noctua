@@ -1,6 +1,7 @@
 mod commands;
 mod error;
 mod formats;
+mod book_files;
 mod journal_files;
 mod openlibrary;
 mod library;
@@ -14,7 +15,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let dir = app.path().app_data_dir()?;
+            // NOCTUA_DATA_DIR runs the real app on a separate library (for
+            // testing without touching the user's own books and notes).
+            let dir = match std::env::var_os("NOCTUA_DATA_DIR") {
+                Some(custom) => std::path::PathBuf::from(custom),
+                None => app.path().app_data_dir()?,
+            };
             std::fs::create_dir_all(&dir)?;
             let library = library::Library::open(&dir.join("library.db"))?;
             app.manage(Mutex::new(library));

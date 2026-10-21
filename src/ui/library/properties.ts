@@ -21,12 +21,26 @@ export function formatSize(bytes: number): string {
   return `${value.toFixed(unit ? 1 : 0)} ${units[unit]}`;
 }
 
+/** How the user wants files kept in order (remembered between edits). */
+const ORGANIZE_KEY = "organize-files";
+type Organize = { rename: boolean; write: boolean };
+
+/** Mirrors book_files::organized_name in Rust, for the preview only. */
+function organizedName(title: string, author: string, ext: string): string {
+  const clean = (s: string, max: number) =>
+    s.replace(/[\\/:*?"<>|#^[\]\p{Cc}]/gu, " ").replace(/\s+/g, " ").trim().replace(/^[. ]+|[. ]+$/g, "").slice(0, max).trim();
+  const ti = clean(title, 150);
+  const a = clean(author, 80);
+  return ti ? `${a ? `${a} - ` : ""}${ti}.${ext}` : "";
+}
+
 function folderOf(path: string): string {
   return path.replace(/[\\/][^\\/]*$/, "");
 }
 
 /** Modal to edit title, author, description and cover. Resolves when closed. */
-export function openProperties(initial: Book): Promise<void> {
+export async function openProperties(initial: Book): Promise<void> {
+  const organize: Organize = { rename: true, write: true, ...((await api.getSetting<Organize>(ORGANIZE_KEY)) ?? {}) };
   return new Promise((resolve) => {
     let book = initial;
 
@@ -77,6 +91,28 @@ export function openProperties(initial: Book): Promise<void> {
       },
     });
 
+    // Keeping files in order: rename after the details and write them inside the file.
+    const ext = book.path.split(".").pop() ?? book.format;
+    const currentName = book.path.split(/[\\/]/).pop() ?? "";
+    const renameBox = h("input", { type: "checkbox", checked: organize.rename }) as HTMLInputElement;
+    const writeBox = h("input", { type: "checkbox", checked: organize.write }) as HTMLInputElement;
+    const namePreview = h("span", { class: "muted name-preview" });
+    const drawNamePreview = () => {
+      const next = organizedName(title.value, author.value, ext);
+      namePreview.textContent = !renameBox.checked || !next || next === currentName ? t("fileNameStays", currentName) : t("fileNameWillBe", next);
+    };
+    [title, author].forEach((el) => el.addEventListener("input", drawNamePreview));
+    renameBox.addEventListener("change", drawNamePreview);
+    const organizeFields = h(
+      "fieldset",
+      { class: "organize" },
+      h("legend", {}, t("organizeFiles")),
+      h("label", { class: "check-row" }, renameBox, t("renameFile")),
+      namePreview,
+      book.format === "epub" ? h("label", { class: "check-row" }, writeBox, t("writeToFile")) : h("p", { class: "muted" }, t("writeToFileEpubOnly")),
+    );
+    drawNamePreview();
+
     const field = (label: string, control: HTMLElement) => h("label", { class: "field" }, h("span", {}, label), control);
     const info = (label: string, value: string) => [h("dt", {}, label), h("dd", {}, value)];
 
@@ -104,6 +140,7 @@ export function openProperties(initial: Book): Promise<void> {
             field(t("title"), title),
             field(t("author"), author),
             field(t("description"), description),
+            organizeFields,
             h(
               "dl",
               { class: "properties-info" },
@@ -130,11 +167,20 @@ export function openProperties(initial: Book): Promise<void> {
 
     dialog.addEventListener("close", async () => {
       if (dialog.returnValue === "save") {
-        await api.updateProperties(book.id, {
-          title: title.value,
-          author: author.value.trim() || null,
-          description: description.value.trim() || null,
-        });
+        const choice: Organize = { rename: renameBox.checked, write: writeBox.checked };
+        await api.setSetting(ORGANIZE_KEY, choice);
+        try {
+          const saved = await api.updateProperties(book.id, {
+            title: title.value,
+            author: author.value.trim() || null,
+            description: description.value.trim() || null,
+            renameFile: choice.rename,
+            writeToFile: choice.write && book.format === "epub",
+          });
+          if (saved.warnings.length) await alertDialog(`${t("organizeWarnings")}\n\n${saved.warnings.join("\n")}`);
+        } catch (err) {
+          await alertDialog(String(err));
+        }
       }
       lookup.destroy();
       dialog.remove();

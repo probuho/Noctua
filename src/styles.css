@@ -746,23 +746,6 @@ kbd { font: 0.8rem ui-monospace, monospace; padding: 1px 6px; border: 1px solid 
 
 @media (max-width: 600px) {
   .toolbar { flex-wrap: wrap; }
-  /* The sidebar becomes a horizontal, scrollable row of chips. */
-  .library-body { flex-direction: column; }
-  .sidebar {
-    width: auto;
-    flex-direction: row;
-    align-items: center;
-    gap: 4px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-  .sidebar ul { display: flex; gap: 4px; }
-  .sidebar .sidebar-bottom { margin: 0; padding: 0; border: none; }
-  .sidebar-heading { padding: 0 2px; }
-  .sidebar-heading > span { display: none; }
-  .sidebar-item > button:first-child { white-space: nowrap; border: 1px solid var(--border); border-radius: 16px; padding: 4px 10px; }
   .selection-bar { max-height: 40vh; overflow-y: auto; }
   .properties-grid { grid-template-columns: 1fr; }
   .properties-side { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
@@ -826,3 +809,56 @@ kbd { font: 0.8rem ui-monospace, monospace; padding: 1px 6px; border: 1px solid 
 .ol-cover img { width: 100%; height: 100%; object-fit: cover; }
 .ol-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .ol-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+/* --- Library sidebar: collapsible, a drawer on narrow windows ------------- */
+.library-body { position: relative; }
+.library[data-sidebar="closed"] .sidebar { display: none; }
+.sidebar-backdrop { display: none; }
+@media (max-width: 900px) {
+  .sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    width: min(280px, 85vw);
+    box-shadow: 4px 0 16px rgb(0 0 0 / 0.25);
+  }
+  .library[data-sidebar="open"] .sidebar-backdrop { display: block; position: absolute; inset: 0; z-index: 29; background: rgb(0 0 0 / 0.35); }
+}
+.sidebar-toggle[aria-expanded="true"] { color: var(--accent); }
+
+/* Book thumbnails without a cover show the book's own details. */
+.cover.placeholder {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 10px;
+  text-align: center;
+  color: var(--fg);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), var(--surface));
+  overflow: hidden;
+}
+.ph-title { font-weight: 700; font-size: 0.95rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.ph-author { font-size: 0.8rem; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ph-format { margin-top: auto; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; color: var(--muted); }
+
+/* Selection mode: every card shows a clear checkbox, selected ones are outlined. */
+.book-card.is-selected { outline: 3px solid var(--accent); outline-offset: 3px; }
+.check { width: 28px; height: 28px; min-width: 28px; border-radius: 6px; font-size: 1rem; font-weight: 700; box-shadow: 0 1px 4px rgb(0 0 0 / 0.35); }
+.book-card.is-selected .check { background: var(--accent); color: var(--accent-fg); }
+.select-toggle[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.selection-bar { position: sticky; bottom: 0; z-index: 5; }
+
+/* Delete-for-good dialog and file-order options. */
+.choices { border: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.choices legend { font-weight: 600; margin-bottom: 6px; }
+.choice { display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--control, var(--border)); border-radius: 8px; cursor: pointer; }
+.choice:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.choice input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); }
+.choice > span { display: flex; flex-direction: column; gap: 2px; }
+.danger-fill.primary { background: #c01c28; border-color: #c01c28; color: #fff; }
+.organize { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 10px; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.organize legend { padding: 0 4px; font-weight: 600; font-size: 0.9rem; }
+.organize .check-row { align-items: flex-start; }
+.organize .check-row input { flex-shrink: 0; margin-top: 2px; }
+.name-preview { font-size: 0.85rem; overflow-wrap: anywhere; padding-left: 26px; }

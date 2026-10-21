@@ -418,6 +418,18 @@ impl Library {
         self.for_each_id(ids, "DELETE FROM books WHERE id = ?1", |tx, sql, id| tx.execute(sql, [id]))
     }
 
+    /// After the file was renamed or rewritten by Noctua.
+    pub fn set_path(&self, id: i64, path: &str, size: i64) -> Result<()> {
+        self.conn.execute("UPDATE books SET path = ?2, size = ?3 WHERE id = ?1", params![id, path, size])?;
+        Ok(())
+    }
+
+    pub fn trashed_ids(&self) -> Result<Vec<i64>> {
+        let mut stmt = self.conn.prepare("SELECT id FROM books WHERE deleted_at IS NOT NULL")?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn empty_trash(&self) -> Result<()> {
         self.conn.execute("DELETE FROM books WHERE deleted_at IS NOT NULL", [])?;
         Ok(())

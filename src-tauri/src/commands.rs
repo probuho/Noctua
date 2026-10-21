@@ -54,17 +54,59 @@ pub fn set_extracted_metadata(
     lock(&state).set_extracted_metadata(id, title.as_deref(), author.as_deref(), cover.as_deref())
 }
 
+/// Result of saving properties: the book plus problems that did not stop the save.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PropertiesSaved {
+    pub book: Book,
+    pub warnings: Vec<String>,
+}
+
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_book_properties(
     id: i64,
     title: String,
     author: Option<String>,
     description: Option<String>,
+    rename_file: bool,
+    write_to_file: bool,
     state: State<LibraryState>,
-) -> Result<Book> {
+) -> Result<PropertiesSaved> {
     let lib = lock(&state);
+    let before = lib.get(id)?;
     lib.update_properties(id, &title, author.as_deref(), description.as_deref())?;
-    lib.get(id)
+    let book = lib.get(id)?;
+    let mut warnings = Vec::new();
+    let mut path = std::path::PathBuf::from(&book.path);
+
+    if write_to_file && book.format == "epub" {
+        if let Err(e) = crate::book_files::write_epub_metadata(&path, &book.title, book.author.as_deref(), book.description.as_deref()) {
+            warnings.push(format!("write: {e}"));
+        }
+    }
+    if rename_file {
+        match crate::book_files::rename(&path, &book.title, book.author.as_deref()) {
+            Ok(new_path) => path = new_path,
+            Err(e) => warnings.push(format!("rename: {e}")),
+        }
+    }
+    let size = std::fs::metadata(&path).map(|m| m.len() as i64).unwrap_or(book.size);
+    lib.set_path(id, &path.to_string_lossy(), size)?;
+
+    // The journal file is named after the title: keep it with the book.
+    if before.title != book.title {
+        if let Some(dir) = journal_dir(&lib)? {
+            let old = dir.join(journal_files::file_name_for(&before.title, id));
+            let new = dir.join(journal_files::file_name_for(&book.title, id));
+            if old.exists() && !new.exists() {
+                if let Err(e) = std::fs::rename(&old, &new) {
+                    warnings.push(format!("journal: {e}"));
+                }
+            }
+        }
+    }
+    Ok(PropertiesSaved { book: lib.get(id)?, warnings })
 }
 
 #[tauri::command]
@@ -108,13 +150,26 @@ pub fn restore_books(book_ids: Vec<i64>, state: State<LibraryState>) -> Result<(
 
 /// Removes books from the library for good. Files on disk are never touched.
 #[tauri::command]
-pub fn delete_books(book_ids: Vec<i64>, state: State<LibraryState>) -> Result<()> {
-    lock(&state).delete(&book_ids)
+pub fn delete_books(book_ids: Vec<i64>, delete_files: bool, state: State<LibraryState>) -> Result<Vec<String>> {
+    let mut lib = lock(&state);
+    let failed = if delete_files { trash_files(&lib, &book_ids)? } else { Vec::new() };
+    lib.delete(&book_ids)?;
+    Ok(failed)
 }
 
+/// Removes the books in the trash from the library and, if asked, sends
+/// their files to the system trash. Returns the files that could not be moved.
 #[tauri::command]
-pub fn empty_trash(state: State<LibraryState>) -> Result<()> {
-    lock(&state).empty_trash()
+pub fn empty_trash(delete_files: bool, state: State<LibraryState>) -> Result<Vec<String>> {
+    let lib = lock(&state);
+    let failed = if delete_files { trash_files(&lib, &lib.trashed_ids()?)? } else { Vec::new() };
+    lib.empty_trash()?;
+    Ok(failed)
+}
+
+fn trash_files(lib: &Library, ids: &[i64]) -> Result<Vec<String>> {
+    let paths = ids.iter().map(|id| lib.get(*id).map(|b| std::path::PathBuf::from(b.path))).collect::<Result<Vec<_>>>()?;
+    Ok(crate::book_files::to_trash(&paths))
 }
 
 // --- Categories ------------------------------------------------------------------

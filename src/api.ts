@@ -96,8 +96,11 @@ export const api = {
   openBook: (id: number) => invoke<ArrayBuffer>("open_book", { id }),
   setExtractedMetadata: (id: number, meta: { title?: string; author?: string; cover?: string }) =>
     invoke<void>("set_extracted_metadata", { id, ...meta }),
-  updateProperties: (id: number, props: { title: string; author: string | null; description: string | null }) =>
-    invoke<Book>("update_book_properties", { id, ...props }),
+  /** Saves the details; optionally renames the file and writes them inside it (EPUB). */
+  updateProperties: (
+    id: number,
+    props: { title: string; author: string | null; description: string | null; renameFile: boolean; writeToFile: boolean },
+  ) => invoke<{ book: Book; warnings: string[] }>("update_book_properties", { id, ...props }),
   setCover: (id: number, cover: string) => invoke<Book>("set_cover", { id, cover }),
   resetCover: (id: number) => invoke<Book>("reset_cover", { id }),
   saveProgress: (id: number, location: string, progress: number) =>
@@ -107,8 +110,9 @@ export const api = {
   setRead: (bookIds: Ids, read: boolean) => invoke<void>("set_read", { bookIds, read }),
   trashBooks: (bookIds: Ids) => invoke<void>("trash_books", { bookIds }),
   restoreBooks: (bookIds: Ids) => invoke<void>("restore_books", { bookIds }),
-  deleteBooks: (bookIds: Ids) => invoke<void>("delete_books", { bookIds }),
-  emptyTrash: () => invoke<void>("empty_trash"),
+  /** With `deleteFiles`, files go to the system trash. Returns files that could not be moved. */
+  deleteBooks: (bookIds: Ids, deleteFiles: boolean) => invoke<string[]>("delete_books", { bookIds, deleteFiles }),
+  emptyTrash: (deleteFiles: boolean) => invoke<string[]>("empty_trash", { deleteFiles }),
 
   listCategories: () => invoke<Category[]>("list_categories"),
   createCategory: (name: string) => invoke<Category>("create_category", { name }),
