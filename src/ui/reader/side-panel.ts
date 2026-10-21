@@ -1,4 +1,4 @@
-import { api, type Annotation, type Book, type Bookmark, type JournalEntry } from "../../api";
+import { api, type Annotation, type Book, type Bookmark } from "../../api";
 import type { ReaderSession, ReadingPosition, SearchResult, TocItem } from "../../formats";
 import { t } from "../../i18n";
 import { confirmDialog } from "../dialogs";
@@ -7,6 +7,7 @@ import { icon, type IconName } from "../icons";
 import { openMenuAt } from "../menu";
 import { COLOR_NAMES, cssColor, labelChip, type Annotator, type ColorName } from "./annotations";
 import { exportNotes, type ExportFormat } from "./export";
+import { createJournalView } from "./journal";
 
 export type PanelTab = "toc" | "search" | "bookmarks" | "notes" | "journal";
 
@@ -45,7 +46,6 @@ function tocList(items: TocItem[], onPick: (target: string) => void): HTMLElemen
 }
 
 const percent = (progress: number) => `${Math.round(progress * 100)}%`;
-const dateTime = new Intl.DateTimeFormat(navigator.language, { dateStyle: "medium", timeStyle: "short" });
 
 /** Small icon-only action; the label is both tooltip and accessible name. */
 const iconAction = (name: IconName, label: string, onclick: (e: Event) => void, extra = "") =>
@@ -257,113 +257,15 @@ export function createSidePanel({ book, session, annotator, position }: Deps) {
     );
   };
 
-  // --- Journal ------------------------------------------------------------
-  let journal: JournalEntry[] = [];
-  const journalList = h("ul", { class: "journal-list" });
-  const journalInput = h("textarea", { rows: 4, placeholder: t("journalPlaceholder"), "aria-label": t("journal") });
-  const linkInput = h("input", { type: "checkbox", checked: true });
+  // --- Journal (Markdown files in the user's folder) ---------------------
+  const journal = createJournalView({ book, session, position });
 
-  const drawJournal = () => {
-    journalList.replaceChildren(
-      ...(journal.length
-        ? journal.map((entry) => {
-            const bodyEl = h("p", { class: "journal-body" }, entry.body);
-            const li = h(
-              "li",
-              { class: "journal-entry" },
-              h(
-                "div",
-                { class: "journal-meta" },
-                h(
-                  "time",
-                  { datetime: new Date(entry.createdAt * 1000).toISOString() },
-                  dateTime.format(new Date(entry.createdAt * 1000)),
-                  entry.updatedAt > entry.createdAt + 59 ? ` · ${t("edited")}` : "",
-                ),
-                h(
-                  "div",
-                  { class: "row-actions" },
-                  iconAction("edit", t("editEntry"), () => editEntry(entry, li, bodyEl)),
-                  iconAction("trash", t("deleteEntry"), async () => {
-                    if (!(await confirmDialog(t("confirmDeleteEntry")))) return;
-                    journal = await api.deleteJournalEntry(entry.id, bookId);
-                    drawJournal();
-                  }),
-                ),
-              ),
-              bodyEl,
-              entry.location !== null
-                ? h(
-                    "button",
-                    { class: "link-button", onclick: () => void session.goTo(entry.location!) },
-                    icon("pin"),
-                    t("goToPosition", percent(entry.progress ?? 0)),
-                  )
-                : null,
-            );
-            return li;
-          })
-        : [h("li", { class: "empty" }, t("noJournal"))]),
-    );
-  };
-
-  const editEntry = (entry: JournalEntry, li: HTMLElement, bodyEl: HTMLElement) => {
-    const editor = h("textarea", { rows: 4, "aria-label": t("editEntry") });
-    editor.value = entry.body;
-    const form = h(
-      "form",
-      {
-        class: "journal-edit",
-        onsubmit: async (e: Event) => {
-          e.preventDefault();
-          if (!editor.value.trim()) return;
-          journal = await api.updateJournalEntry(entry.id, bookId, editor.value);
-          drawJournal();
-        },
-      },
-      editor,
-      h(
-        "div",
-        { class: "modal-actions" },
-        h("button", { type: "button", onclick: () => drawJournal() }, t("cancel")),
-        h("button", { type: "submit", class: "primary" }, t("save")),
-      ),
-    );
-    bodyEl.replaceWith(form);
-    li.querySelector(".link-button")?.remove();
-    editor.focus();
-  };
-
-  const journalView = h(
-    "div",
-    {},
-    h(
-      "form",
-      {
-        class: "journal-form",
-        onsubmit: async (e: Event) => {
-          e.preventDefault();
-          const text = journalInput.value.trim();
-          if (!text) return journalInput.focus();
-          const pos = linkInput.checked ? position() : null;
-          journal = await api.addJournalEntry(bookId, text, pos?.location ?? null, pos?.progress ?? null);
-          journalInput.value = "";
-          drawJournal();
-        },
-      },
-      journalInput,
-      h("label", { class: "check-row" }, linkInput, t("linkPosition")),
-      h("button", { type: "submit", class: "primary" }, t("addEntry")),
-    ),
-    journalList,
-  );
-
-  // --- Export (notes + journal) -------------------------------------------
+  // --- Export (notes) -------------------------------------------
   const runExport = async (format: ExportFormat) => {
     const notes = annotator?.list() ?? [];
-    if (!notes.length && !journal.length) return;
+    if (!notes.length) return;
     try {
-      const path = await exportNotes({ book, notes, journal, labels: annotator!.labels() }, format);
+      const path = await exportNotes({ book, notes, journal: [], labels: annotator!.labels() }, format);
       if (path) notesStatus.textContent = t("exported", path);
     } catch (err) {
       notesStatus.textContent = String(err);
@@ -418,7 +320,7 @@ export function createSidePanel({ book, session, annotator, position }: Deps) {
     toc: tocView,
     search: searchView,
     bookmarks: bookmarksView,
-    ...(annotator ? { notes: notesView, journal: journalView } : { journal: journalView }),
+    ...(annotator ? { notes: notesView, journal: journal.el } : { journal: journal.el }),
   };
 
   // Search highlights only make sense while the results are visible.
@@ -432,7 +334,7 @@ export function createSidePanel({ book, session, annotator, position }: Deps) {
     search: () => searchInput,
     bookmarks: () => body.querySelector("button"),
     notes: () => body.querySelector("input"),
-    journal: () => journalInput,
+    journal: () => journal.el.querySelector<HTMLElement>("textarea, button"),
   };
 
   const emit = () => changeListeners.forEach((l) => l(el.hidden ? null : tab));
@@ -456,10 +358,6 @@ export function createSidePanel({ book, session, annotator, position }: Deps) {
   }
 
   void api.listBookmarks(bookId).then(drawBookmarks);
-  void api.listJournal(bookId).then((list) => {
-    journal = list;
-    drawJournal();
-  });
 
   return {
     el,
@@ -482,6 +380,7 @@ export function createSidePanel({ book, session, annotator, position }: Deps) {
     addBookmark,
     destroy() {
       searchAbort?.abort();
+      journal.destroy();
     },
   };
 }

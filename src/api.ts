@@ -33,6 +33,12 @@ export interface Annotation {
   updatedAt: number;
 }
 
+export interface JournalFile {
+  folder: string | null;
+  file: string;
+  contents: string;
+}
+
 export interface JournalEntry {
   id: number;
   bookId: number;
@@ -118,6 +124,17 @@ export const api = {
   updateJournalEntry: (id: number, bookId: number, body: string) =>
     invoke<JournalEntry[]>("update_journal_entry", { id, bookId, body }),
   deleteJournalEntry: (id: number, bookId: number) => invoke<JournalEntry[]>("delete_journal_entry", { id, bookId }),
+
+  /** Reading journal: one Markdown file per book in a folder the user picks. */
+  journalFolder: () => invoke<string | null>("journal_folder"),
+  setJournalFolder: (path: string) => invoke<void>("set_journal_folder", { path }),
+  journalRead: (bookId: number) => invoke<JournalFile>("journal_read", { bookId }),
+  /** Returns the whole file after appending. */
+  journalAppend: (bookId: number, section: string) => invoke<string>("journal_append", { bookId, section }),
+  journalWrite: (bookId: number, contents: string) => invoke<void>("journal_write", { bookId, contents }),
+  /** `data` is base64; returns the path relative to the folder ("attachments/…"). */
+  journalSaveImage: (data: string, extension: string) => invoke<string>("journal_save_image", { data, extension }),
+  journalImage: (path: string) => invoke<ArrayBuffer>("journal_image", { path }),
 
   /** Library-wide notebook (books in the trash are left out). */
   listAllAnnotations: () => invoke<Annotation[]>("list_all_annotations"),

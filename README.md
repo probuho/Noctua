@@ -16,10 +16,10 @@ Estado: **en desarrollo**. Biblioteca local de EPUB y PDF con:
 - propiedades editables (título, autor, descripción, portada) y «Continuar leyendo»;
 - notas y resaltados en 5 colores con significado editable (Importante, Idea,
   Definición, Duda, Cita) en EPUB y PDF, búsqueda en Google, Wikipedia o el traductor;
-- diario de lectura por libro, con entradas vinculadas a la posición;
-- «Notas y diario»: todas las notas y entradas de todos los libros en un solo lugar,
-  con búsqueda, filtros y exportación agrupada por libro;
-- exportación de notas y diario a HTML o Markdown.
+- diario de lectura tipo Obsidian: un archivo Markdown por libro en la carpeta que
+  elijas (puede ser tu bóveda), con imágenes pegadas y entradas vinculadas a la posición;
+- «Notas»: todos los resaltados y notas de todos los libros en un solo lugar,
+  con búsqueda, filtros y exportación a HTML o Markdown agrupada por libro.
 
 Y un lector con:
 

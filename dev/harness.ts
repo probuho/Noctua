@@ -69,6 +69,16 @@ const notesOf = (bookId: number) =>
   annotations.filter((n) => n.bookId === bookId).sort((a, b) => a.progress - b.progress || a.id - b.id);
 const journalOf = (bookId: number) =>
   journal.filter((j) => j.bookId === bookId).sort((a, b) => b.createdAt - a.createdAt);
+let journalFolder: string | null = null;
+const journalFiles = new Map<string, string>();
+const journalImages = new Map<string, Uint8Array>();
+const journalFile = (bookId: number) => `${byId(bookId).title.replace(/[\/:*?"<>|#^[\]]/g, " ").trim()}.md`;
+const publishJournal = () =>
+  (document.documentElement.dataset.harnessJournal = JSON.stringify({
+    folder: journalFolder,
+    files: Object.fromEntries(journalFiles),
+    images: [...journalImages.keys()],
+  }));
 const withOriginal = (b: Book) => ({ ...b, hasOriginalCover: originalCovers.has(b.id), annotationCount: notesOf(b.id).length });
 
 (window as any).__HARNESS__ = true;
@@ -214,6 +224,53 @@ mockIPC((cmd, payload) => {
     case "save_export":
       exportsWritten[a.path] = a.contents;
       publish();
+      return null;
+    // --- Markdown journal (mirrors src-tauri/src/journal_files.rs) ---
+    case "plugin:dialog|open":
+      return a.options?.directory ? "/vault/Noctua" : null;
+    case "journal_folder":
+      return journalFolder;
+    case "set_journal_folder":
+      journalFolder = a.path;
+      publishJournal();
+      return null;
+    case "journal_read":
+      return { folder: journalFolder, file: journalFile(a.bookId), contents: journalFiles.get(journalFile(a.bookId)) ?? "" };
+    case "journal_append": {
+      if (!journalFolder) throw new Error("journal folder not set");
+      const name = journalFile(a.bookId);
+      const b = byId(a.bookId);
+      let text = journalFiles.get(name) ?? `---
+title: "${b.title}"
+tags: [noctua, lectura]
+---
+
+# ${b.title}
+`;
+      text += `
+${a.section.trimEnd()}
+`;
+      journalFiles.set(name, text);
+      publishJournal();
+      return text;
+    }
+    case "journal_write":
+      journalFiles.set(journalFile(a.bookId), a.contents);
+      publishJournal();
+      return null;
+    case "journal_save_image": {
+      const rel = `attachments/noctua-${nextId++}.${a.extension}`;
+      journalImages.set(rel, Uint8Array.from(atob(a.data), (c) => c.charCodeAt(0)));
+      publishJournal();
+      return rel;
+    }
+    case "journal_image": {
+      const bytes = journalImages.get(a.path);
+      if (!bytes) throw new Error("not found");
+      return bytes.buffer;
+    }
+    case "plugin:opener|reveal_item_in_dir":
+      document.documentElement.dataset.harnessRevealed = JSON.stringify(a.paths ?? a.path ?? a);
       return null;
     case "plugin:dialog|save":
       return `/exports/${a.options?.defaultPath ?? "notes.html"}`;

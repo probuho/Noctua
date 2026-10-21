@@ -278,18 +278,24 @@ Haz las pruebas E1–E20 con un EPUB y repite al menos E1–E7, E12 y E15 con un
   *Esperado:* el menú de selección, la lista de **Notas** y la exportación usan «Clave». Se mantiene al reiniciar la app.
 - [ ] **E20d** En **Notas**, los filtros «Todas», cada significado usado y «Con nota» muestran cuántas hay y filtran la lista.
 
-### Diario de lectura
+### Diario de lectura (archivos Markdown, tipo Obsidian)
 
-- [ ] **J1** **Diario** (o tecla `J`): el cursor queda en el cuadro de texto. Escribir una reflexión y pulsar **Guardar en el diario**.
-  *Esperado:* aparece arriba de la lista con fecha y hora y un enlace «Ir a la posición (N%)».
-- [ ] **J2** Desmarcar **Vincular a la posición actual** y guardar otra entrada.
-  *Esperado:* se guarda sin enlace de posición.
-- [ ] **J3** Ir a otra parte del libro y pulsar «Ir a la posición» de J1 → vuelve a donde estabas al escribirla.
-- [ ] **J4** Editar una entrada (lápiz) y guardar → cambia el texto y aparece «· editada». Cancelar deja el texto como estaba.
-- [ ] **J5** Eliminar una entrada (papelera) pide confirmación.
-- [ ] **J6** Intentar guardar una entrada vacía → no se guarda.
-- [ ] **J7** **Notas → Exportar** incluye la sección «Diario de lectura» con todas las entradas.
-- [ ] **J8** Cerrar la app y volver a abrir el libro → las entradas siguen ahí.
+El diario es distinto de las notas: se guarda como un archivo `.md` por libro en una carpeta tuya y admite imágenes. Las notas siguen dentro de la app, ligadas a cada resaltado y sin imágenes.
+
+- [ ] **J1** La primera vez, **Diario** (o tecla `J`) explica dónde se guarda y muestra **Elegir carpeta del diario**. Elegir una carpeta (por ejemplo, dentro de tu bóveda de Obsidian).
+  *Esperado:* aparece el nombre del archivo (`<Título del libro>.md`) y el cuadro para escribir.
+- [ ] **J2** Escribir con Markdown (`**negrita**`, `*cursiva*`, listas `- `) y pulsar **Guardar en el diario**.
+  *Esperado:* debajo se ve la entrada formateada, con un encabezado de fecha · % y el enlace **Ir a esta parte del libro**.
+- [ ] **J3** Copiar una imagen (captura con Win+Shift+S) y pegarla con Ctrl+V en el cuadro. Probar también **Insertar imagen** y arrastrar un archivo.
+  *Esperado:* se añade `![](attachments/noctua-….png)` al texto y, al guardar, la imagen se ve en la vista previa.
+- [ ] **J4** Ir a otra parte del libro y pulsar **Ir a esta parte del libro** → vuelve a donde estabas al escribir.
+- [ ] **J5** Desmarcar **Vincular a la posición actual** y guardar → la entrada no lleva enlace.
+- [ ] **J6** **Editar archivo** abre el `.md` completo; cambiar algo, **Guardar** → se ve el cambio. **Cancelar** no cambia nada.
+- [ ] **J7** El botón de carpeta abre el Explorador con el archivo seleccionado.
+- [ ] **J8** Abrir la carpeta con Obsidian: el archivo tiene las propiedades `title`, `author` y `tags: [noctua, lectura]`, las imágenes se ven y el enlace de posición queda oculto (es un comentario).
+- [ ] **J9** Editar el archivo en Obsidian y volver a abrir el libro en Noctua → se ven los cambios.
+- [ ] **J10** Las entradas del diario antiguo (guardadas antes de esta versión) se copian al `.md` la primera vez que eliges carpeta, bajo «Entrada importada».
+- [ ] **J11** **Cambiar carpeta** permite usar otra; los archivos anteriores se quedan donde estaban.
 
 ### Solo PDF
 
@@ -301,16 +307,16 @@ Haz las pruebas E1–E20 con un EPUB y repite al menos E1–E7, E12 y E15 con un
 
 ---
 
-## N. Notas y diario de toda la biblioteca
+## N. Notas de toda la biblioteca
 
-- [ ] **N1** En la barra lateral de la biblioteca, **Notas y diario** muestra el total de resaltados y entradas de diario de todos los libros.
+- [ ] **N1** En la barra lateral de la biblioteca, **Notas** muestra el total de resaltados de todos los libros. El diario no aparece aquí: vive en tu carpeta de archivos Markdown.
 - [ ] **N2** Al entrar, la rejilla de libros se sustituye por la lista; arriba desaparecen el buscador de libros, el orden y **Seleccionar**.
-- [ ] **N3** **Mostrar**: Todo / Resaltados / Con nota / Diario filtran por tipo.
+- [ ] **N3** **Mostrar**: Todo / Con nota.
 - [ ] **N4** **Significado**: cada chip muestra solo los resaltados de ese color (por su nombre, p. ej. «Duda»).
 - [ ] **N5** El desplegable de libro limita la lista a un libro.
-- [ ] **N6** **Buscar en notas y diario** busca en el texto resaltado, en las notas, en el diario y en título/autor.
+- [ ] **N6** **Buscar en las notas** busca en el texto resaltado, en las notas y en título/autor.
 - [ ] **N7** **Orden**: «Más recientes» (todo mezclado por fecha) y «Por libro» (agrupado, con los resaltados en orden de lectura).
-- [ ] **N8** **Abrir en el libro** abre el libro justo en ese resaltado o entrada; **Volver** (pie del lector) regresa a donde ibas leyendo.
+- [ ] **N8** **Abrir en el libro** abre el libro justo en ese resaltado; **Volver** (pie del lector) regresa a donde ibas leyendo.
 - [ ] **N9** **Exportar lo mostrado** → HTML o Markdown: un solo documento con una sección por libro y solo lo que estaba filtrado.
 - [ ] **N10** Mover un libro a la papelera quita sus notas de esta vista; restaurarlo las devuelve.
 
